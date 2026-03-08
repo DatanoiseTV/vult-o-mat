@@ -26,6 +26,7 @@ type MessagePart = {
   functionCall?: any; 
   functionResponse?: any;
   thought_signature?: string;
+  thoughtSignature?: string; // Handle both cases for API stability
 };
 type Message = { role: 'user' | 'model', parts: MessagePart[] };
 
@@ -452,6 +453,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         // Metadata fields that should be preserved on split parts
         const metadata: any = {};
         if (p.thought_signature) metadata.thought_signature = p.thought_signature;
+        if (p.thoughtSignature) metadata.thoughtSignature = p.thoughtSignature;
 
         if (p.thought) {
           apiParts.push({ thought: p.thought, ...metadata });
@@ -622,9 +624,17 @@ const LLMPane: React.FC<LLMPaneProps> = ({
                         Object.keys(part).forEach(key => {
                           const target = modelParts[index] as any;
                           const source = part as any;
-                          if (typeof part[key] === 'string') {
+                          
+                          // CONTENT fields: concatenate
+                          if (key === 'text' || key === 'thought') {
                             target[key] = (target[key] || "") + source[key];
-                          } else if (typeof part[key] === 'object' && part[key] !== null) {
+                          } 
+                          // METADATA fields (signatures): assign, do not concatenate!
+                          else if (key === 'thought_signature' || key === 'thoughtSignature') {
+                            target[key] = source[key];
+                          }
+                          // OBJECT fields (functionCall): merge
+                          else if (typeof part[key] === 'object' && part[key] !== null) {
                             target[key] = { 
                               ...(target[key] || {}), 
                               ...source[key] 
