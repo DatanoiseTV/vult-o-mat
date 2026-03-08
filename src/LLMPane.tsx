@@ -8,6 +8,7 @@ interface LLMPaneProps {
   onTriggerGenerator: (index: number) => void;
   onConfigureInput: (index: number, config: any) => void;
   onLoadPreset: (name: string) => void;
+  onSaveSnapshot: (message: string) => void;
   getPresets: () => string[];
   getTelemetry: () => Record<string, any>;
   getSpectrum: () => number[];
@@ -25,7 +26,7 @@ type Message = { role: 'user' | 'model', parts: MessagePart[] };
 
 const LLMPane: React.FC<LLMPaneProps> = ({ 
   currentCode, onUpdateCode, onSetKnob, onTriggerGenerator, 
-  onConfigureInput, onLoadPreset, getPresets, getTelemetry, getSpectrum, getAudioMetrics, systemPrompt 
+  onConfigureInput, onLoadPreset, onSaveSnapshot, getPresets, getTelemetry, getSpectrum, getAudioMetrics, systemPrompt 
 }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -309,6 +310,17 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         }
       },
       {
+        name: "store_snapshot",
+        description: "Saves a named version of the current code to the history. Use this to create restore points before making risky changes.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            message: { type: "STRING", description: "A descriptive name or comment for this snapshot (like a commit message)." }
+          },
+          required: ["message"]
+        }
+      },
+      {
         name: "tell",
         description: "Sends a status update, progress report, or informative message to the user while performing complex tasks.",
         parameters: {
@@ -551,6 +563,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
             'user_message': 'Sending status update',
             'ask_user': 'Requesting guidance',
             'write_plan': 'Documenting internal plan',
+            'store_snapshot': 'Saving version snapshot',
             'tell': 'Communicating'
           };
 
@@ -660,6 +673,10 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               result = { success: true };
             } else if (name === 'write_plan') {
               addDisplayMsg('system', `📝 Documenting internal development plan`);
+              result = { success: true };
+            } else if (name === 'store_snapshot') {
+              addDisplayMsg('system', `📸 Storing snapshot: "${fc.args.message}"`);
+              onSaveSnapshot(fc.args.message);
               result = { success: true };
             } else if (name === 'ask_user') {
               const question = fc.args.question;
