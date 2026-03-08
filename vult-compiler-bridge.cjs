@@ -6,11 +6,13 @@ global.window = global;
 global.self = global;
 global.navigator = { userAgent: 'node' };
 
-const vultModule = require('./public/vultweb.cjs');
+// We try to require the .js file directly. 
+// Since this is a .cjs file, Node should treat the .js as CommonJS unless there's a package.json saying otherwise in that dir.
+const vultModule = require('./public/vultweb.js');
 const compiler = vultModule.vult || vultModule;
 
 if (!compiler || typeof compiler.generateJSCode !== 'function') {
-    process.stderr.write(JSON.stringify({ error: "Vult compiler failed to initialize." }));
+    process.stderr.write(JSON.stringify({ error: "Vult compiler failed to initialize correctly in Node." }));
     process.exit(1);
 }
 
@@ -22,16 +24,10 @@ process.stdin.on('end', () => {
         if (!code) throw new Error("No code provided");
 
         if (target === 'c' || target === 'cpp') {
-            // Use generateC for C++ export
-            // Vult generateC usually returns a list of files or an object with multiple strings
-            // We'll try to get the main .cpp content
             const compilation = compiler.generateC(code, ["-template", "none"]);
-            
             if (compilation.errors && Array.isArray(compilation.errors) && compilation.errors.length > 0) {
                 process.stdout.write(JSON.stringify({ errors: compilation.errors }));
             } else {
-                // compilation is usually an array of { name: string, code: string }
-                // or similar structure depending on the vult version
                 process.stdout.write(JSON.stringify({ 
                     code: Array.isArray(compilation) ? compilation.map(f => `// File: ${f.name}\n${f.code}`).join("\n\n") : (compilation.code || compilation),
                     errors: []
@@ -40,7 +36,6 @@ process.stdin.on('end', () => {
             return;
         }
 
-        // Default to JS for live execution
         let jsCode = compiler.generateJSCode(code);
         
         if (jsCode.includes("Required functions are not defined")) {
@@ -50,23 +45,15 @@ process.stdin.on('end', () => {
             and controlChange(c:int,v:int,ch:int) {}
             and default() {}
             `;
-            const retryCode = code + "\n" + stubs;
-            jsCode = compiler.generateJSCode(retryCode);
+            jsCode = compiler.generateJSCode(code + "\n" + stubs);
         }
 
         if (jsCode.includes("Errors in the program") || jsCode.includes("Error:")) {
-            process.stdout.write(JSON.stringify({ 
-                errors: [{ msg: jsCode }] 
-            }));
+            process.stdout.write(JSON.stringify({ errors: [{ msg: jsCode }] }));
         } else {
-            process.stdout.write(JSON.stringify({ 
-                code: jsCode,
-                errors: []
-            }));
+            process.stdout.write(JSON.stringify({ code: jsCode, errors: [] }));
         }
     } catch (e) {
-        process.stdout.write(JSON.stringify({ 
-            errors: [{ msg: e.toString() }] 
-        }));
+        process.stdout.write(JSON.stringify({ errors: [{ msg: e.toString() }] }));
     }
 });
