@@ -13,8 +13,8 @@ const KEY_LABELS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 const KEY_TYPES = ['white', 'black', 'white', 'black', 'white', 'white', 'black', 'white', 'black', 'white', 'black', 'white'];
 const KEYBOARD_MAPPING = ['a', 'w', 's', 'e', 'd', 'f', 't', 'g', 'y', 'h', 'u', 'j', 'k', 'o', 'l', 'p', ';', "'"];
 
-const WHITE_KEY_WIDTH = 22; // Reduced size
-const BLACK_KEY_WIDTH = 14; // Reduced size
+const WHITE_KEY_WIDTH = 22;
+const BLACK_KEY_WIDTH = 14;
 
 const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff }) => {
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set());
@@ -37,7 +37,8 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff }) 
     if (!containerRef.current) return;
     const updateSize = () => {
       if (containerRef.current) {
-        const width = containerRef.current.offsetWidth;
+        // Subtract horizontal padding (20px total)
+        const width = containerRef.current.offsetWidth - 20;
         const maxWhiteKeys = Math.floor(width / WHITE_KEY_WIDTH);
         let estimatedTotalKeys = Math.floor((maxWhiteKeys / 7) * 12);
         setNumKeys(Math.max(12, Math.min(estimatedTotalKeys, 127 - baseNote)));
@@ -215,7 +216,7 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff }) 
             } else {
               return (
                 <div key={k.offset} className={`key black ${isActive ? 'active' : ''}`}
-                  style={{ left: `${whiteKeysCount * WHITE_KEY_WIDTH - (BLACK_KEY_WIDTH / 2)}px` }}
+                  style={{ left: `${whiteKeysCount * WHITE_KEY_WIDTH - (BLACK_KEY_WIDTH / 2)}px`, position: 'absolute' }}
                   onMouseDown={() => onKeyMouseDown(note)}
                   onMouseEnter={() => onKeyMouseEnter(note)}
                   onMouseLeave={() => isMouseDown && handleNoteOff(note, true)}
