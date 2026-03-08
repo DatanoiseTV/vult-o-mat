@@ -448,9 +448,9 @@ const App: React.FC = () => {
   const [selectedMidiInput, setSelectedMidiInput] = useState<string>('all');
 
   // UI States
-  const [labHeight, setLabHeight] = useState(140);
-  const [seqHeight, setSeqHeight] = useState(130);
-  const [midiHeight, setMidiHeight] = useState(180);
+  const [labHeight, setLabHeight] = useState(160);
+  const [seqHeight, setSeqHeight] = useState(150);
+  const [midiHeight, setMidiHeight] = useState(200);
   
   const [isLabCollapsed, setIsLabCollapsed] = useState(false);
   const [isSeqCollapsed, setIsSeqCollapsed] = useState(false);
@@ -690,9 +690,11 @@ const App: React.FC = () => {
 
   const getCodeSummary = (codeStr: string) => {
     const lines = codeStr.split('\n');
+    // Find the first line that isn't whitespace or a decorative comment
     const firstMeaningfulLine = lines.find(l => {
-      const trimmed = l.trim();
-      return trimmed.length > 0 && !trimmed.match(/^\/\/[\s=*-]*$/);
+      const t = l.trim();
+      // Skip empty lines, decorative comments like // ===, and header comments
+      return t.length > 0 && !t.match(/^\/\/[\s=*-]*$/) && !t.startsWith('// ---');
     });
     const summary = firstMeaningfulLine || lines[0] || "";
     return summary.substring(0, 100).trim();

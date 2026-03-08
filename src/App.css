@@ -487,19 +487,11 @@
   background: #ffcc00;
 }
 
-.section-title {
-  font-size: 10px;
-  font-weight: 900;
-  color: #666;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
+.editor-wrapper {
+  flex: 1; 
+  min-height: 250px; /* Ensure editor is never too small */
+  position: relative;
+  background: #1e1e1e;
 }
 
 .section-header {
@@ -513,9 +505,24 @@
   border-bottom: 1px solid #222;
   height: 30px;
   flex-shrink: 0;
-  z-index: 10;
-  position: sticky;
-  top: 0;
+  position: relative;
+  z-index: 5;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 900;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  pointer-events: none;
 }
 
 .section-header:hover {
