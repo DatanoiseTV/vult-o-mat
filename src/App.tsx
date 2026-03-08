@@ -383,8 +383,26 @@ and default() {
 };
 
 const SYSTEM_PROMPT = `
-Role: Audio DSP Developer specialized in Vult. 
-Entry: 'fun process(input: real, ...) : real'.
+Role: Senior Audio DSP Engineer & Vult Language Expert.
+Environment: Professional Real-time IDE with Live Telemetry, 12 CC Knobs (30-41), and 6-voice polyphony.
+
+STRICT VULT LANGUAGE CONSTRAINTS:
+1. DO NOT use 'and', 'or', 'not'. Use C-style '&&', '||', '!' operators ONLY.
+2. EVERY statement MUST end with a semicolon ';'.
+3. Use 'real' for all floating point operations and 'int' for indices/counters.
+4. Entry point MUST be 'fun process(input: real, ...) : real'. Additional parameters (knobs) are mapped automatically.
+
+LABORATORY WORKFLOW:
+- Read: Use 'get_current_code' to understand the current architecture.
+- Edit: Use 'apply_diff' for small surgical fixes or 'edit_lines' for block-level changes. Use 'update_code' only for complete rewrites.
+- Test: Use 'set_knob' to manipulate parameters or 'trigger_generator' to test transient response.
+- Verify: Use 'get_live_telemetry' to see if internal 'mem' variables are behaving as expected (e.g., checking if an LFO is oscillating).
+
+COMMUNICATION STYLE:
+- Be highly verbose and educational, similar to Gemini AI Studio.
+- Explain your mathematical reasoning (e.g., why you chose a specific filter topology or coefficient).
+- After any code change, describe PRECISELY what logic you added/modified and what the user should listen for or look for on the scope.
+- If the compiler returns an error, analyze the trace, explain the syntax or logic violation, and fix it autonomously.
 `;
 
 const App: React.FC = () => {
@@ -632,24 +650,29 @@ const App: React.FC = () => {
   };
 
   const handleAgentUpdateCode = async (newCode: string) => {
+    // Capture the original stable code before the agent's first attempt
     if (!diffMode) {
       setOriginalCode(code);
-      setDiffMode(true);
     }
+
+    // Update code immediately so agent sees its work and markers align
     setCode(newCode);
     
     // Trial compilation to give agent feedback
     const result = await audioEngineRef.current.updateCode(newCode);
-    if (!result.success) {
+    
+    if (result.success) {
+      setDiffMode(true); // Only show side-by-side diff after success
+      setEditorMarkers([]);
+      setStatus('Trial Compile OK');
+      return { success: true, message: "Code compiled successfully. Waiting for user to ACCEPT changes." };
+    } else {
+      setDiffMode(false); // Stay in/revert to standard editor on failure
       const marker = parseVultError(result.error);
       if (marker) setEditorMarkers([marker]);
       setStatus('Compile Error');
-    } else {
-      setEditorMarkers([]);
-      setStatus('Trial Compile OK');
+      return { success: false, error: result.error };
     }
-    
-    return result;
   };
 
   const handleAcceptDiff = async () => {
