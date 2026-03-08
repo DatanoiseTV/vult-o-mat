@@ -79,3 +79,12 @@ fun process(input: real, cutoff: real) : real {
   return result;
 }
 ```
+
+## Licensing
+
+Vult-O-Mat is licensed under a custom license that permits personal, educational, and non-commercial open-source use. 
+
+*   **Attribution:** Any project using this software or its derivatives must attribute the original author (syso) and the Vult-O-Mat project.
+*   **Commercial Use:** Requires a separate commercial license. Please contact the author for inquiries.
+
+See the [LICENSE](LICENSE) file for the full legal text.
