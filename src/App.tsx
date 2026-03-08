@@ -9,6 +9,7 @@ import LLMPane from './LLMPane';
 import VirtualMIDI from './VirtualMIDI';
 import StateInspector from './StateInspector';
 import MultiScopeView from './MultiScopeView';
+import { Knob } from './Knob';
 import './App.css';
 
 const PRESETS: Record<string, string> = {
@@ -781,22 +782,29 @@ const App: React.FC = () => {
                     </select>
                     
                     {input.type === 'oscillator' && (
-                      <div className="strip-controls">
-                        <select value={input.oscType} onChange={(e) => updateInput(i, { oscType: e.target.value as any })}>
+                      <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                        <select value={input.oscType} onChange={(e) => updateInput(i, { oscType: e.target.value as any })} style={{ marginBottom: '4px', width: '100%' }}>
                           <option value="sine">Sine</option>
                           <option value="sawtooth">Saw</option>
                           <option value="square">Square</option>
                           <option value="triangle">Tri</option>
                         </select>
-                        <input type="number" value={input.freq} onChange={(e) => updateInput(i, { freq: parseFloat(e.target.value) })} style={{ width: '45px' }} />
+                        <Knob 
+                          label="FREQ" 
+                          value={input.freq} 
+                          min={20} 
+                          max={20000} 
+                          onChange={(val) => updateInput(i, { freq: val })} 
+                          size={28} 
+                        />
                       </div>
                     )}
 
                     {input.type === 'sample' && (
-                      <div className="strip-controls" style={{ alignItems: 'center' }}>
+                      <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center' }}>
                         <input type="file" accept="audio/*" onChange={(e) => e.target.files && handleSampleUpload(i, e.target.files[0])} style={{ display: 'none' }} id={`sample-${i}`} />
                         <label htmlFor={`sample-${i}`} style={{ cursor: 'pointer', fontSize: '8px', color: '#ffcc00', border: '1px solid #444', padding: '2px 4px' }}>LOAD</label>
-                        <Play size={10} style={{ cursor: 'pointer', color: '#00ff00' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
+                        <Play size={10} style={{ cursor: 'pointer', color: '#00ff00', margin: '0 4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
                         <Activity 
                           size={12} 
                           style={{ cursor: "pointer", color: input.isLooping ? "#00ff00" : "#444" }} 
@@ -806,20 +814,38 @@ const App: React.FC = () => {
                     )}
                     
                     {input.type === 'cv' && (
-                      <div className="strip-controls" style={{ alignItems: 'center' }}>
-                        <input type="range" min="0" max="1" step="0.01" value={input.value} onChange={(e) => updateInput(i, { value: parseFloat(e.target.value) })} />
-                        <Activity 
-                          size={12} 
-                          style={{ cursor: "pointer", color: input.isCycling ? "#00ff00" : "#444" }} 
-                          onClick={() => updateInput(i, { isCycling: !input.isCycling })}
+                      <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                        <Knob 
+                          label="VALUE" 
+                          value={input.value} 
+                          min={0} 
+                          max={1} 
+                          isFloat={true}
+                          onChange={(val) => updateInput(i, { value: val })} 
+                          size={28} 
                         />
+                        <div style={{ marginTop: '4px' }}>
+                          <Activity 
+                            size={12} 
+                            style={{ cursor: "pointer", color: input.isCycling ? "#00ff00" : "#444" }} 
+                            onClick={() => updateInput(i, { isCycling: !input.isCycling })}
+                          />
+                        </div>
                       </div>
                     )}
                     
                     {input.type === 'sweep' && (
-                      <div className="strip-controls">
-                        <input type="number" value={input.value} step="0.1" onChange={(e) => updateInput(i, { value: parseFloat(e.target.value) })} placeholder="Sec" />
-                        <Play size={10} style={{ cursor: 'pointer', color: '#ffcc00' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
+                      <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                        <Knob 
+                          label="TIME(s)" 
+                          value={input.value} 
+                          min={0.1} 
+                          max={10.0} 
+                          isFloat={true}
+                          onChange={(val) => updateInput(i, { value: val })} 
+                          size={28} 
+                        />
+                        <Play size={10} style={{ cursor: 'pointer', color: '#ffcc00', marginTop: '4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
                       </div>
                     )}
 

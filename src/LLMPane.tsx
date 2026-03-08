@@ -30,7 +30,6 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const [status, setStatus] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   
-  // displayMessages for the chat UI
   const [displayMessages, setDisplayMessages] = useState<{ 
     role: 'user' | 'assistant' | 'system' | 'thought', 
     content: string, 
@@ -39,6 +38,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     choices?: {label: string, value: string}[]
   }[]>([]);
 
+  const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini');
+  const [endpoint, setEndpoint] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('gemini-2.0-flash-lite-preview-02-05');
   const [showSettings, setShowSettings] = useState(false);
@@ -52,9 +53,16 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
+    const savedProvider = localStorage.getItem('llm_provider') as 'gemini' | 'openai';
+    if (savedProvider) setProvider(savedProvider);
+    
+    const savedEndpoint = localStorage.getItem('llm_endpoint');
+    if (savedEndpoint) setEndpoint(savedEndpoint);
+
+    const savedKey = localStorage.getItem('llm_api_key');
     if (savedKey) setApiKey(savedKey);
-    const savedModel = localStorage.getItem('gemini_model_name');
+
+    const savedModel = localStorage.getItem('llm_model_name');
     if (savedModel) setModelName(savedModel);
   }, []);
 
@@ -66,11 +74,15 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     scrollToBottom();
   }, [displayMessages, isLoading, status]);
 
-  const handleSaveSettings = (key: string, model: string) => {
+  const handleSaveSettings = (newProvider: 'gemini' | 'openai', newEndpoint: string, key: string, model: string) => {
+    setProvider(newProvider);
+    setEndpoint(newEndpoint);
     setApiKey(key);
     setModelName(model);
-    localStorage.setItem('gemini_api_key', key);
-    localStorage.setItem('gemini_model_name', model);
+    localStorage.setItem('llm_provider', newProvider);
+    localStorage.setItem('llm_endpoint', newEndpoint);
+    localStorage.setItem('llm_api_key', key);
+    localStorage.setItem('llm_model_name', model);
   };
 
   const toggleThought = (id: string) => {
@@ -106,136 +118,140 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     });
   };
 
+  const getToolsDef = () => {
+    return [
+      {
+        name: "update_code",
+        description: "Replaces the entire Vult code in the editor with new code. ALWAYS provide the COMPLETE code file.",
+        parameters: {
+          type: "OBJECT",
+          properties: { new_code: { type: "STRING", description: "The complete, updated Vult code." } },
+          required: ["new_code"]
+        }
+      },
+      {
+        name: "edit_lines",
+        description: "Replaces a specific block of lines in the code with new code.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            start_line: { type: "NUMBER", description: "The 1-based line number to start replacing from (inclusive)." },
+            end_line: { type: "NUMBER", description: "The 1-based line number to end replacing at (inclusive)." },
+            new_code: { type: "STRING", description: "The new code to insert in place of those lines." }
+          },
+          required: ["start_line", "end_line", "new_code"]
+        }
+      },
+      {
+        name: "apply_diff",
+        description: "Applies a surgical replacement in the code. Replaces 'old_string' with 'new_string'. Use significant context to avoid ambiguity.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            old_string: { type: "STRING", description: "The exact literal text to find." },
+            new_string: { type: "STRING", description: "The text to replace it with." }
+          },
+          required: ["old_string", "new_string"]
+        }
+      },
+      {
+        name: "grep_search",
+        description: "Searches for a regex pattern in the current code and returns matching lines with numbers.",
+        parameters: {
+          type: "OBJECT",
+          properties: { pattern: { type: "STRING", description: "The regex pattern to search for." } },
+          required: ["pattern"]
+        }
+      },
+      {
+        name: "get_current_code",
+        description: "Retrieves the current Vult code from the editor.",
+        parameters: { type: "OBJECT", properties: {} }
+      },
+      {
+        name: "set_knob",
+        description: "Sets a virtual CC knob value (30-41). Values range from 0 to 127.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            cc: { type: "NUMBER", description: "The CC number (30-41)." },
+            value: { type: "NUMBER", description: "The value (0-127)." }
+          },
+          required: ["cc", "value"]
+        }
+      },
+      {
+        name: "trigger_generator",
+        description: "Triggers a laboratory generator (Impulse, Step, Sweep) on a specific input strip.",
+        parameters: {
+          type: "OBJECT",
+          properties: { index: { type: "NUMBER", description: "The input strip index (0-based)." } },
+          required: ["index"]
+        }
+      },
+      {
+        name: "configure_lab_input",
+        description: "Configures a DSP Lab input strip type and parameters.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            index: { type: "NUMBER", description: "The input strip index." },
+            type: { type: "STRING", enum: ["oscillator", "cv", "impulse", "step", "sweep", "test_noise", "silence"], description: "The source type." },
+            freq: { type: "NUMBER", description: "Frequency if oscillator." },
+            oscType: { type: "STRING", enum: ["sine", "sawtooth", "square", "triangle"], description: "Oscillator shape." }
+          },
+          required: ["index", "type"]
+        }
+      },
+      {
+        name: "load_preset",
+        description: "Loads one of the built-in Vult presets.",
+        parameters: {
+          type: "OBJECT",
+          properties: { name: { type: "STRING", description: "The preset name." } },
+          required: ["name"]
+        }
+      },
+      {
+        name: "list_presets",
+        description: "Returns a list of available preset names.",
+        parameters: { type: "OBJECT", properties: {} }
+      },
+      {
+        name: "get_live_telemetry",
+        description: "Retrieves the current values of all internal Vult variables (live telemetry).",
+        parameters: { type: "OBJECT", properties: {} }
+      },
+      {
+        name: "ask_user",
+        description: "Asks the user a question.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            question: { type: "STRING", description: "The question to ask." }
+          },
+          required: ["question"]
+        }
+      },
+      {
+        name: "user_message",
+        description: "Displays a status message or update to the user.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            message: { type: "STRING", description: "The message to display." }
+          },
+          required: ["message"]
+        }
+      }
+    ];
+  };
+
   const callGeminiStream = async (currentMessages: Message[]) => {
     const payload = {
       contents: currentMessages,
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      tools: [{
-        functionDeclarations: [
-          {
-            name: "update_code",
-            description: "Replaces the entire Vult code in the editor with new code. ALWAYS provide the COMPLETE code file.",
-            parameters: {
-              type: "OBJECT",
-              properties: { new_code: { type: "STRING", description: "The complete, updated Vult code." } },
-              required: ["new_code"]
-            }
-          },
-          {
-            name: "apply_diff",
-            description: "Applies a surgical replacement in the code. Replaces 'old_string' with 'new_string'. Use significant context to avoid ambiguity. Prefer this for small fixes.",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                old_string: { type: "STRING", description: "The exact literal text to find." },
-                new_string: { type: "STRING", description: "The text to replace it with." }
-              },
-              required: ["old_string", "new_string"]
-            }
-          },
-          {
-            name: "grep_search",
-            description: "Searches for a regex pattern in the current code and returns matching lines with numbers.",
-            parameters: {
-              type: "OBJECT",
-              properties: { pattern: { type: "STRING", description: "The regex pattern to search for." } },
-              required: ["pattern"]
-            }
-          },
-          {
-            name: "get_current_code",
-            description: "Retrieves the current Vult code from the editor.",
-            parameters: { type: "OBJECT", properties: {} }
-          },
-          {
-            name: "set_knob",
-            description: "Sets a virtual CC knob value (30-41). Values range from 0 to 127.",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                cc: { type: "NUMBER", description: "The CC number (30-41)." },
-                value: { type: "NUMBER", description: "The value (0-127)." }
-              },
-              required: ["cc", "value"]
-            }
-          },
-          {
-            name: "trigger_generator",
-            description: "Triggers a laboratory generator (Impulse, Step, Sweep) on a specific input strip.",
-            parameters: {
-              type: "OBJECT",
-              properties: { index: { type: "NUMBER", description: "The input strip index (0-based)." } },
-              required: ["index"]
-            }
-          },
-          {
-            name: "configure_lab_input",
-            description: "Configures a DSP Lab input strip type and parameters.",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                index: { type: "NUMBER", description: "The input strip index." },
-                type: { type: "STRING", enum: ["oscillator", "cv", "impulse", "step", "sweep", "test_noise", "silence"], description: "The source type." },
-                freq: { type: "NUMBER", description: "Frequency if oscillator." },
-                oscType: { type: "STRING", enum: ["sine", "sawtooth", "square", "triangle"], description: "Oscillator shape." }
-              },
-              required: ["index", "type"]
-            }
-          },
-          {
-            name: "load_preset",
-            description: "Loads one of the built-in Vult presets.",
-            parameters: {
-              type: "OBJECT",
-              properties: { name: { type: "STRING", description: "The preset name." } },
-              required: ["name"]
-            }
-          },
-          {
-            name: "list_presets",
-            description: "Returns a list of available preset names.",
-            parameters: { type: "OBJECT", properties: {} }
-          },
-          {
-            name: "get_live_telemetry",
-            description: "Retrieves the current values of all internal Vult variables (live telemetry).",
-            parameters: { type: "OBJECT", properties: {} }
-          },
-          {
-            name: "ask_user",
-            description: "Asks the user a question. Can include multiple choice options.",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                question: { type: "STRING", description: "The question to ask." },
-                options: { 
-                  type: "ARRAY", 
-                  items: { 
-                    type: "OBJECT",
-                    properties: {
-                      label: { type: "STRING" },
-                      value: { type: "STRING" }
-                    }
-                  },
-                  description: "Optional list of choices for the user."
-                }
-              },
-              required: ["question"]
-            }
-          },
-          {
-            name: "user_message",
-            description: "Displays a status message or update to the user about what you are currently doing.",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                message: { type: "STRING", description: "The message to display." }
-              },
-              required: ["message"]
-            }
-          }
-        ]
-      }],
+      tools: [{ functionDeclarations: getToolsDef() }],
       generationConfig: { temperature: 0.1 }
     };
 
@@ -251,7 +267,73 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
       throw new Error(err.error?.message || response.statusText);
     }
+    return response.body;
+  };
 
+  const callOpenAIStream = async (currentMessages: Message[]) => {
+    // Convert Gemini format to OpenAI format
+    const openaiMessages = [
+      { role: "system", content: systemPrompt }
+    ];
+
+    for (const msg of currentMessages) {
+      if (msg.role === 'user') {
+        let content = "";
+        for (const p of msg.parts) {
+          if (p.text) content += p.text + "\n";
+          if (p.functionResponse) {
+            content += `Function ${p.functionResponse.name} response: ${JSON.stringify(p.functionResponse.response)}\n`;
+          }
+        }
+        openaiMessages.push({ role: "user", content });
+      } else if (msg.role === 'model') {
+        let content = "";
+        for (const p of msg.parts) {
+          if (p.text) content += p.text + "\n";
+          if (p.functionCall) {
+            content += `Called function ${p.functionCall.name} with ${JSON.stringify(p.functionCall.args)}\n`;
+          }
+        }
+        openaiMessages.push({ role: "assistant", content });
+      }
+    }
+
+    const oaiTools = getToolsDef().map(t => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: {
+          type: "object",
+          properties: t.parameters.properties,
+          required: t.parameters.required
+        }
+      }
+    }));
+
+    abortControllerRef.current = new AbortController();
+    const url = endpoint || 'http://localhost:11434/v1/chat/completions';
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey || 'dummy'}`
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: openaiMessages,
+        stream: true,
+        tools: oaiTools,
+        temperature: 0.1
+      }),
+      signal: abortControllerRef.current.signal
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+      throw new Error(err.error?.message || response.statusText);
+    }
     return response.body;
   };
 
@@ -269,41 +351,105 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     try {
       while (true) {
         setStatus("Thinking...");
-        const stream = await callGeminiStream(currentConversation);
-        if (!stream) break;
-
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
+        
         let modelParts: MessagePart[] = [];
         let currentTextId = "";
         let currentThoughtId = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        if (provider === 'gemini') {
+          const stream = await callGeminiStream(currentConversation);
+          if (!stream) break;
+          const reader = stream.getReader();
+          const decoder = new TextDecoder();
           
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.substring(6));
-                const incomingParts = data.candidates?.[0]?.content?.parts || [];
-                
-                for (const part of incomingParts) {
-                  modelParts.push(part);
-                  if (part.text) {
-                    setStatus("Typing...");
-                    if (!currentTextId) currentTextId = addDisplayMsg('assistant', "", undefined, true);
-                    addDisplayMsg('assistant', part.text, currentTextId, true);
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.substring(6));
+                  const incomingParts = data.candidates?.[0]?.content?.parts || [];
+                  for (const part of incomingParts) {
+                    modelParts.push(part);
+                    if (part.text) {
+                      setStatus("Typing...");
+                      if (!currentTextId) currentTextId = addDisplayMsg('assistant', "", undefined, true);
+                      addDisplayMsg('assistant', part.text, currentTextId, true);
+                    }
+                    if (part.thought) {
+                      setStatus("Thinking deeply...");
+                      if (!currentThoughtId) currentThoughtId = addDisplayMsg('thought', "", undefined, true);
+                      addDisplayMsg('thought', part.thought, currentThoughtId, true);
+                    }
                   }
-                  if (part.thought) {
-                    setStatus("Thinking deeply...");
-                    if (!currentThoughtId) currentThoughtId = addDisplayMsg('thought', "", undefined, true);
-                    addDisplayMsg('thought', part.thought, currentThoughtId, true);
+                } catch (e) {}
+              }
+            }
+          }
+        } else {
+          // OpenAI / LM Studio / Ollama Stream
+          const stream = await callOpenAIStream(currentConversation);
+          if (!stream) break;
+          const reader = stream.getReader();
+          const decoder = new TextDecoder();
+          
+          let currentToolCall: any = null;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
+                try {
+                  const data = JSON.parse(line.substring(6));
+                  const delta = data.choices?.[0]?.delta;
+                  
+                  if (delta) {
+                    if (delta.content) {
+                      setStatus("Typing...");
+                      if (!currentTextId) currentTextId = addDisplayMsg('assistant', "", undefined, true);
+                      addDisplayMsg('assistant', delta.content, currentTextId, true);
+                      
+                      // Find or create the text part
+                      let textPart = modelParts.find(p => p.text !== undefined);
+                      if (!textPart) {
+                        textPart = { text: "" };
+                        modelParts.push(textPart);
+                      }
+                      textPart.text += delta.content;
+                    }
+                    
+                    if (delta.tool_calls) {
+                      for (const tc of delta.tool_calls) {
+                        if (tc.function?.name) {
+                          currentToolCall = { name: tc.function.name, argsString: tc.function.arguments || "" };
+                        } else if (tc.function?.arguments && currentToolCall) {
+                          currentToolCall.argsString += tc.function.arguments;
+                        }
+                      }
+                    }
                   }
+                } catch (e) {}
+              }
+            }
+          }
+
+          if (currentToolCall) {
+            try {
+              modelParts.push({
+                functionCall: {
+                  name: currentToolCall.name,
+                  args: JSON.parse(currentToolCall.argsString)
                 }
-              } catch (e) {}
+              });
+            } catch(e) {
+              console.error("Failed to parse tool args", currentToolCall.argsString);
             }
           }
         }
@@ -350,6 +496,26 @@ const LLMPane: React.FC<LLMPaneProps> = ({
                 addDisplayMsg('system', `❌ Error: 'old_string' not found.`);
                 result = { success: false, error: "Pattern not found." };
               }
+            } else if (name === 'edit_lines') {
+              addDisplayMsg('system', `🛠️ Tool: edit_lines(${fc.args.start_line}-${fc.args.end_line})`);
+              const { start_line, end_line, new_code } = fc.args;
+              const lines = codeRef.current.split('\n');
+              if (start_line > 0 && end_line >= start_line && start_line <= lines.length) {
+                const before = lines.slice(0, start_line - 1);
+                const after = lines.slice(end_line);
+                const updatedCode = [...before, new_code, ...after].join('\n');
+                const res = await onUpdateCode(updatedCode);
+                if (res.success) {
+                  addDisplayMsg('system', `✅ Lines replaced and compiled.`);
+                  result = { success: true };
+                } else {
+                  addDisplayMsg('system', `❌ Edit failed:\n${res.error}`);
+                  result = { success: false, error: res.error };
+                }
+              } else {
+                addDisplayMsg('system', `❌ Invalid line numbers.`);
+                result = { success: false, error: "Invalid line ranges." };
+              }
             } else if (name === 'update_code') {
               addDisplayMsg('system', `🛠️ Tool: update_code`);
               const res = await onUpdateCode(fc.args.new_code);
@@ -385,7 +551,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               result = { success: true };
             } else if (name === 'ask_user') {
               setStatus("Waiting for user...");
-              addDisplayMsg('assistant', fc.args.question, undefined, false, fc.args.options);
+              addDisplayMsg('assistant', fc.args.question);
               const userResponse = await new Promise<string>((resolve) => {
                 askUserResolverRef.current = resolve;
               });
@@ -403,6 +569,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         addDisplayMsg('assistant', `⚠️ Error: ${err.message}`);
+        console.error("Agent Error:", err);
       }
     } finally {
       setIsLoading(false);
@@ -425,11 +592,13 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     setInput('');
     setIsLoading(true);
     addDisplayMsg('user', userInput);
-    if (!apiKey) {
-      addDisplayMsg('assistant', "API key missing. Click the Settings icon.");
+    
+    if (provider === 'gemini' && !apiKey) {
+      addDisplayMsg('assistant', "API key missing for Gemini. Click the Settings icon.");
       setIsLoading(false);
       return;
     }
+
     const newUserMsg: Message = { role: 'user', parts: [{ text: userInput }] };
     processAgentLoop([...messages, newUserMsg]);
   };
@@ -454,7 +623,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               <StopCircle size={16} />
             </button>
           )}
-          <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', border: 'none', color: apiKey ? '#00ff00' : '#888', cursor: 'pointer' }}>
+          <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', border: 'none', color: (provider === 'gemini' && apiKey) || provider === 'openai' ? '#00ff00' : '#888', cursor: 'pointer' }}>
             <Settings size={16} />
           </button>
         </div>
@@ -462,14 +631,32 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       
       {showSettings && (
         <div style={{ padding: '12px', background: '#252526', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '9px', color: '#888', fontWeight: 'bold' }}>GEMINI API KEY</div>
-          <input type="password" placeholder="Key..." value={apiKey} onChange={(e) => handleSaveSettings(e.target.value, modelName)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <label style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input type="radio" checked={provider === 'gemini'} onChange={() => handleSaveSettings('gemini', endpoint, apiKey, modelName)} />
+              GEMINI API
+            </label>
+            <label style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input type="radio" checked={provider === 'openai'} onChange={() => handleSaveSettings('openai', endpoint, apiKey, modelName)} />
+              LOCAL / OPENAI
+            </label>
+          </div>
+          
+          {provider === 'openai' && (
+            <>
+              <div style={{ fontSize: '9px', color: '#888', fontWeight: 'bold' }}>ENDPOINT URL</div>
+              <input type="text" placeholder="http://localhost:11434/v1/chat/completions" value={endpoint} onChange={(e) => handleSaveSettings(provider, e.target.value, apiKey, modelName)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
+            </>
+          )}
+
+          <div style={{ fontSize: '9px', color: '#888', fontWeight: 'bold' }}>API KEY {provider === 'openai' && '(Optional)'}</div>
+          <input type="password" placeholder="Key..." value={apiKey} onChange={(e) => handleSaveSettings(provider, endpoint, e.target.value, modelName)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
+          
           <div style={{ fontSize: '9px', color: '#888', fontWeight: 'bold' }}>MODEL</div>
-          <input type="text" placeholder="Model ID..." value={modelName} onChange={(e) => handleSaveSettings(apiKey, e.target.value)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
+          <input type="text" placeholder="Model ID..." value={modelName} onChange={(e) => handleSaveSettings(provider, endpoint, apiKey, e.target.value)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
         </div>
       )}
 
-      {/* Agent Progress Bar */}
       <div style={{ height: '2px', width: '100%', background: '#1a1a1a', position: 'relative', overflow: 'hidden' }}>
         {isLoading && (
           <div style={{ 
