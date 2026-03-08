@@ -30,9 +30,9 @@ class VultProcessor extends AudioWorkletProcessor {
           const initFn = this.vultInstance.liveDefault || this.vultInstance.default;
           if (typeof initFn === 'function') initFn.call(this.vultInstance);
           
-          console.log("[Worklet] New Vult instance loaded.");
           this.port.postMessage({ type: 'status', success: true });
         } catch (err) {
+          console.error("[Worklet] Update Error:", err);
           this.port.postMessage({ type: 'status', success: false, error: err.toString() });
         }
       } else if (type === 'setSources') {
@@ -63,23 +63,31 @@ class VultProcessor extends AudioWorkletProcessor {
     };
   }
 
-  // Helper to deep-collect all numeric/boolean state from the Vult instance
-  collectState(obj, prefix = "", depth = 0) {
-    if (depth > 3 || !obj || typeof obj !== 'object') return {};
+  // Improved state collection: target Vult memory specifically
+  collectState() {
+    if (!this.vultInstance) return {};
     let state = {};
-    for (const key in obj) {
-      // Skip internal Vult methods and noisy properties
-      if (key.startsWith("Live_") || key.startsWith("live") || key === "process") continue;
-      
-      const val = obj[key];
-      const fullKey = prefix ? `${prefix}.${key}` : key;
-      
-      if (typeof val === 'number' || typeof val === 'boolean') {
-        state[fullKey] = val;
-      } else if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-        Object.assign(state, this.collectState(val, fullKey, depth + 1));
+    
+    // 1. Check the 'context' property (most common Vult storage)
+    const ctx = this.vultInstance.context || this.vultInstance._ctx;
+    if (ctx && typeof ctx === 'object') {
+      for (const key in ctx) {
+        const val = ctx[key];
+        if (typeof val === 'number' || typeof val === 'boolean') {
+          state[key] = val;
+        }
       }
     }
+
+    // 2. Check the instance itself (for simple variables)
+    for (const key in this.vultInstance) {
+      if (key === 'context' || key === '_ctx' || key.startsWith("Live_") || key.startsWith("live") || typeof this.vultInstance[key] === 'function') continue;
+      const val = this.vultInstance[key];
+      if (typeof val === 'number' || typeof val === 'boolean') {
+        state[key] = val;
+      }
+    }
+
     return state;
   }
 
@@ -126,15 +134,11 @@ class VultProcessor extends AudioWorkletProcessor {
           try {
             const result = processFn.apply(this.vultInstance, inputValues);
             
-            // PROBE SYNC
+            // Probing system: find value in context or instance
             this.activeProbes.forEach(p => {
-              // Probes can now handle nested paths like "context.phase"
-              const parts = p.split('.');
-              let target = this.vultInstance;
-              for (const part of parts) {
-                if (target) target = target[part];
-              }
-              if (this.probeBuffers[p]) this.probeBuffers[p][this.bufferIdx] = typeof target === 'number' ? target : 0;
+              const ctx = this.vultInstance.context || this.vultInstance._ctx || this.vultInstance;
+              const val = ctx[p] !== undefined ? ctx[p] : this.vultInstance[p];
+              if (this.probeBuffers[p]) this.probeBuffers[p][this.bufferIdx] = typeof val === 'number' ? val : 0;
             });
             this.bufferIdx = (this.bufferIdx + 1) % this.bufferSize;
 
@@ -156,10 +160,10 @@ class VultProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // TELEMETRY
+    // TELEMETRY: Send state updates to UI
     if (this.vultInstance && this.telemetryCounter++ > 20) {
       this.telemetryCounter = 0;
-      const state = this.collectState(this.vultInstance);
+      const state = this.collectState();
       this.port.postMessage({ type: 'telemetry', state, probes: this.probeBuffers });
     }
 
