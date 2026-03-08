@@ -1351,13 +1351,25 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       executeInspiration();
     } else if (val === 'inspiration:collaborate') {
       addDisplayMsg('user', "Selected: Collaborate");
-      addDisplayMsg('assistant', "Excellent. Let's design something tailored. What's the core vibe—Analog, FM, Physical Modeling, or something else? And what kind of sound should we focus on (Lead, Bass, Ethereal, Percussive)?");
-      // Set up a custom resolver to wait for the user's brief
-      const resolver = async (input: string) => {
-        executeInspiration(input);
-      };
-      // We use the existing askUser mechanism but specifically for this flow
-      askUserResolverRef.current = (input: string) => resolver(input);
+      addDisplayMsg('assistant', "Excellent. Let's design something tailored. What's the core **Vibe** we should aim for?", undefined, false, [
+        { label: "Analog (Warm/Noisy)", value: "insp_vibe:Analog" },
+        { label: "FM (Digital/Metallic)", value: "insp_vibe:FM" },
+        { label: "Physical (Acoustic/Resonant)", value: "insp_vibe:Physical" },
+        { label: "Hybrid (Modern/Complex)", value: "insp_vibe:Hybrid" }
+      ]);
+    } else if (val.startsWith('insp_vibe:')) {
+      const vibe = val.split(':')[1];
+      addDisplayMsg('user', `Vibe: ${vibe}`);
+      addDisplayMsg('assistant', `Got it, ${vibe} it is. Now, what kind of **Sound** should we focus on?`, undefined, false, [
+        { label: "Deep Bass", value: `insp_final:${vibe} Bass` },
+        { label: "Lead / Solo", value: `insp_final:${vibe} Lead` },
+        { label: "Ethereal Pad", value: `insp_final:${vibe} Pad` },
+        { label: "Percussive / Drum", value: `insp_final:${vibe} Percussion` }
+      ]);
+    } else if (val.startsWith('insp_final:')) {
+      const brief = val.split(':')[1];
+      addDisplayMsg('user', `Type: ${brief}`);
+      executeInspiration(brief);
     }
   };
 
