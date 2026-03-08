@@ -296,10 +296,11 @@
 .knobs-row {
   display: flex;
   gap: 12px;
-  overflow-x: auto;
+  overflow-y: auto;
   justify-content: flex-start;
-  padding: 8px 12px;
+  padding: 4px 12px;
   width: 100%;
+  height: 100%;
 }
 
 .knob-unit {

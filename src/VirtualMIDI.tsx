@@ -92,18 +92,20 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
         </button>
       </div>
 
-      <div className="knobs-row">
+      <div className="knobs-row" style={{ flexWrap: 'wrap', justifyContent: 'center', gap: '20px', padding: '15px' }}>
         {Object.keys(ccLabels).sort((a, b) => parseInt(a) - parseInt(b)).map(ccStr => {
           const cc = parseInt(ccStr);
           return (
-            <Knob 
-              key={cc} 
-              label={`[${cc}] ${ccLabels[cc]}`} 
-              value={ccValues[cc] || 64} 
-              min={0} 
-              max={127} 
-              onChange={(val) => handleCCChange(cc, val)} 
-            />
+            <div key={cc} style={{ flex: '0 0 auto' }}>
+              <Knob 
+                label={`[${cc}] ${ccLabels[cc]}`} 
+                value={ccValues[cc] || 64} 
+                min={0} 
+                max={127} 
+                size={64} // Significantly larger knobs
+                onChange={(val) => handleCCChange(cc, val)} 
+              />
+            </div>
           );
         })}
       </div>
