@@ -91,8 +91,18 @@ export const Knob: React.FC<KnobProps> = ({ value, min, max, label, onChange, si
   // SVG angle calculation: -135 to 135 degrees (270 degree sweep)
   const angle = ((value - min) / (max - min)) * 270 - 135;
 
+  // Extract CC number from label if it follows the "[CC] Name" pattern
+  const ccMatch = label.match(/^\[(\d+)\]\s*(.*)/);
+  const ccNum = ccMatch ? ccMatch[1] : null;
+  const paramName = ccMatch ? ccMatch[2] : label;
+
   return (
-    <div className="knob-unit" style={{ width: size, userSelect: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div className="knob-unit" style={{ width: size, userSelect: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+      {ccNum && (
+        <div style={{ fontSize: '10px', fontWeight: '900', color: '#ffcc00', lineHeight: '1', marginBottom: '1px' }}>
+          {ccNum}
+        </div>
+      )}
       <div className="knob-label" style={{ 
         fontSize: '7px', 
         color: '#888', 
@@ -102,9 +112,10 @@ export const Knob: React.FC<KnobProps> = ({ value, min, max, label, onChange, si
         overflow: 'hidden', 
         textOverflow: 'ellipsis', 
         maxWidth: '100%',
-        fontWeight: 'bold'
+        fontWeight: 'bold',
+        textTransform: 'uppercase'
       }}>
-        {label}
+        {paramName}
       </div>
       
       <div 

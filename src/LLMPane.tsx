@@ -762,11 +762,6 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {isLoading && (
-            <button onClick={handleStop} style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer' }} title="Stop Agent">
-              <StopCircle size={16} />
-            </button>
-          )}
           <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', border: 'none', color: (provider === 'gemini' && apiKey) || provider === 'openai' ? '#00ff00' : '#888', cursor: 'pointer' }}>
             <Settings size={16} />
           </button>
@@ -858,9 +853,41 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       </div>
 
       <div style={{ padding: '12px', borderTop: '1px solid #333', display: 'flex', gap: '8px', background: '#1a1a1a' }}>
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={askUserResolverRef.current ? "Type your answer..." : "Ask the Vult Agent..."} disabled={isLoading && !askUserResolverRef.current} style={{ flex: 1, background: '#252526', border: '1px solid #444', borderRadius: '20px', padding: '8px 16px', color: '#fff', fontSize: '13px', outline: 'none' }} />
-        <button onClick={handleSend} disabled={(isLoading && !askUserResolverRef.current) || !input.trim()} style={{ background: (isLoading && !askUserResolverRef.current) || !input.trim() ? '#333' : '#007acc', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', transition: 'all 0.2s' }}>
-          <Send size={18} />
+        <input 
+          type="text" 
+          value={input} 
+          onChange={(e) => setInput(e.target.value)} 
+          onKeyDown={(e) => e.key === 'Enter' && (isLoading ? handleStop() : handleSend())} 
+          placeholder={askUserResolverRef.current ? "Type your answer..." : "Ask the Vult Agent..."} 
+          style={{ 
+            flex: 1, 
+            background: '#252526', 
+            border: '1px solid #444', 
+            borderRadius: '20px', 
+            padding: '8px 16px', 
+            color: '#fff', 
+            fontSize: '13px', 
+            outline: 'none' 
+          }} 
+        />
+        <button 
+          onClick={isLoading ? handleStop : handleSend} 
+          disabled={!isLoading && !input.trim()} 
+          style={{ 
+            background: isLoading ? '#ff4444' : (!input.trim() ? '#333' : '#007acc'), 
+            border: 'none', 
+            borderRadius: '50%', 
+            width: '36px', 
+            height: '36px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            cursor: 'pointer', 
+            color: '#fff', 
+            transition: 'all 0.2s' 
+          }}
+        >
+          {isLoading ? <StopCircle size={18} /> : <Send size={18} />}
         </button>
       </div>
     </div>
