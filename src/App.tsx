@@ -394,9 +394,9 @@ STRICT VULT LANGUAGE CONSTRAINTS:
 
 LABORATORY WORKFLOW:
 - Read: Use 'get_current_code' to understand the current architecture.
-- Edit: Use 'apply_diff' for small surgical fixes or 'edit_lines' for block-level changes. Use 'update_code' only for complete rewrites.
+- Edit: Use 'apply_diff' for small surgical fixes or 'edit_lines' for block-level changes.
 - Test: Use 'set_knob' to manipulate parameters or 'trigger_generator' to test transient response.
-- Verify: Use 'get_live_telemetry' to see internal 'mem' variables or 'get_spectrum_data' to analyze the frequency content of the output.
+- Verify: Use 'get_live_telemetry' for internal state, 'get_spectrum_data' for frequency analysis, and 'get_audio_metrics' to analyze Clipping, Headroom, SNR, and RMS levels. Always check for distortion if your code involves high gain or resonance.
 
 COMMUNICATION STYLE:
 - Act as a Senior DSP Research Scientist and Mentor. 
@@ -833,7 +833,7 @@ const App: React.FC = () => {
                           min={20} 
                           max={20000} 
                           onChange={(val) => updateInput(i, { freq: val })} 
-                          size={28} 
+                          size={36} 
                         />
                       </div>
                     )}
@@ -860,7 +860,7 @@ const App: React.FC = () => {
                           max={1} 
                           isFloat={true}
                           onChange={(val) => updateInput(i, { value: val })} 
-                          size={28} 
+                          size={36} 
                         />
                         <div style={{ marginTop: '4px' }}>
                           <Activity 
@@ -881,7 +881,7 @@ const App: React.FC = () => {
                           max={10.0} 
                           isFloat={true}
                           onChange={(val) => updateInput(i, { value: val })} 
-                          size={28} 
+                          size={36} 
                         />
                         <Play size={10} style={{ cursor: 'pointer', color: '#ffcc00', marginTop: '4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
                       </div>

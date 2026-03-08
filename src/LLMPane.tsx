@@ -91,10 +91,14 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const updateTokens = (usage: any) => {
     if (!usage) return;
     setTokens(prev => {
+      const p = (usage.prompt_token_count || usage.prompt_tokens || 0);
+      const c = (usage.candidates_token_count || usage.completion_tokens || 0);
+      const t = (usage.total_token_count || usage.total_tokens || (p + c));
+      
       const next = {
-        prompt: prev.prompt + (usage.prompt_token_count || usage.prompt_tokens || 0),
-        completion: prev.completion + (usage.candidates_token_count || usage.completion_tokens || 0),
-        total: prev.total + (usage.total_token_count || usage.total_tokens || 0)
+        prompt: prev.prompt + p,
+        completion: prev.completion + c,
+        total: prev.total + t
       };
       localStorage.setItem('llm_tokens', JSON.stringify(next));
       return next;
@@ -648,8 +652,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({
             <Activity size={14} color={isLoading ? "#00ff00" : "#666"} className={isLoading ? "animate-spin" : ""} />
             <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>Vult Agent</span>
           </div>
-          <div style={{ fontSize: '10px', color: '#00ff00', marginTop: '2px', fontWeight: 'bold', fontFamily: 'monospace' }}>
-            TOKENS: {tokens.total.toLocaleString()}
+          <div style={{ fontSize: '8px', color: '#555', marginTop: '2px', fontFamily: 'monospace' }}>
+            TOKENS: {tokens.total.toLocaleString()} (P:{tokens.prompt.toLocaleString()} C:{tokens.completion.toLocaleString()})
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
