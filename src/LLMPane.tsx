@@ -930,11 +930,11 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       <div style={{ padding: '12px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1a1a1a' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Activity size={14} color={isLoading ? "#00ff00" : "#666"} className={isLoading ? "animate-spin" : ""} />
+            <Activity size={14} color={isLoading ? "#ff0000" : "#666"} className={isLoading ? "animate-spin" : ""} />
             <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>Vult Agent</span>
           </div>
-          <div style={{ fontSize: '8px', color: '#555', marginTop: '2px', fontFamily: 'monospace' }}>
-            TOKENS: {tokens.total.toLocaleString()} (P:{tokens.prompt.toLocaleString()} C:{tokens.completion.toLocaleString()}) {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'}`}
+          <div style={{ fontSize: '10px', color: '#00ff00', marginTop: '2px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 5px rgba(0,255,0,0.3)' }}>
+            TOKENS: {tokens.total.toLocaleString()} {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'}`}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -976,10 +976,9 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         </div>
       )}
 
-      <div style={{ height: '2px', width: '100%', background: '#1a1a1a', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ height: '4px', width: '100%', background: '#000', position: 'relative', overflow: 'hidden', borderBottom: '1px solid #333' }}>
         {isLoading && <div className="agent-scanner" />}
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px', scrollBehavior: 'smooth' }}>
         {displayMessages.map((m) => (
           <div key={m.id} style={{ 

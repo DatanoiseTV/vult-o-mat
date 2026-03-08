@@ -421,19 +421,19 @@
 .animate-spin { animation: spin 1s linear infinite; }
 
 @keyframes agent-progress {
-  0% { left: -20%; }
-  50% { left: 100%; }
-  100% { left: -20%; }
+  0% { left: -25%; }
+  50% { left: 105%; }
+  100% { left: -25%; }
 }
 
 .agent-scanner {
   position: absolute;
   height: 100%;
-  width: 20%;
-  background: linear-gradient(to right, transparent 0%, #ff0000 50%, transparent 100%);
-  box-shadow: 0 0 15px #ff0000, 0 0 5px #ffaaaa;
-  animation: agent-progress 2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-  filter: blur(1px);
+  width: 25%;
+  background: linear-gradient(to right, transparent 0%, #ff0000 40%, #ff4444 50%, #ff0000 60%, transparent 100%);
+  box-shadow: 0 0 20px #ff0000, 0 0 10px #ff0000;
+  animation: agent-progress 1.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  filter: brightness(1.5);
 }
 
 /* React Piano Overrides - Professional Compact Theme */
