@@ -12,16 +12,23 @@ class VultProcessor extends AudioWorkletProcessor {
       const { type, data } = event.data;
       if (type === 'updateCode') {
         try {
-          const factory = new Function(\`
-            \${data.jsCode}
+          // Robustly capture the vultProcess class
+          const factory = new Function(`
+            ${data.jsCode}
             if (typeof vultProcess !== 'undefined') return vultProcess;
             if (typeof exports !== 'undefined' && exports.vultProcess) return exports.vultProcess;
             throw new Error("Could not find vultProcess class in generated code.");
-          \`);
+          `);
+          
           const VultConstructor = factory();
+          if (typeof VultConstructor !== 'function') {
+            throw new Error("vultProcess is not a constructor");
+          }
+          
           this.vultInstance = new VultConstructor();
           const initFn = this.vultInstance.liveDefault || this.vultInstance.default;
           if (typeof initFn === 'function') initFn.call(this.vultInstance);
+          
           this.port.postMessage({ type: 'status', success: true });
         } catch (err) {
           console.error("[Worklet] Update Error:", err);
@@ -110,12 +117,9 @@ class VultProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // TELEMETRY: Snapshot memory state ~20 times per second
     if (this.vultInstance && this.telemetryCounter++ > 20) {
       this.telemetryCounter = 0;
       const state = {};
-      
-      // Capture context members
       if (this.vultInstance.context) {
         for (const key in this.vultInstance.context) {
           const val = this.vultInstance.context[key];
@@ -124,8 +128,6 @@ class VultProcessor extends AudioWorkletProcessor {
           }
         }
       }
-      
-      // Capture instance members (some compilers put mem directly on this)
       for (const key in this.vultInstance) {
         if (key === 'context') continue;
         const val = this.vultInstance[key];
@@ -133,7 +135,6 @@ class VultProcessor extends AudioWorkletProcessor {
           state[key] = val;
         }
       }
-      
       this.port.postMessage({ type: 'telemetry', state });
     }
 
