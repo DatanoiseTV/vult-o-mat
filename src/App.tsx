@@ -629,6 +629,37 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAgentUpdateCode = async (newCode: string) => {
+    setCode(newCode);
+    localStorage.setItem('vult_session_code', newCode);
+    
+    const newInputs = parseVultInputs(newCode);
+    setInputs(prev => {
+      if (prev.length === newInputs.length && prev.every((v, i) => v.name === newInputs[i].name)) {
+        return prev;
+      }
+      return newInputs;
+    });
+
+    if (isPlaying) {
+      const result = await audioEngineRef.current.updateCode(newCode);
+      if (!result.success) {
+        setStatus(`Compile Error`);
+        const marker = parseVultError(result.error);
+        if (marker) {
+          setEditorMarkers([marker]);
+        } else {
+          setEditorMarkers([]);
+        }
+      } else {
+        setStatus('Running');
+        setEditorMarkers([]);
+      }
+      return result;
+    }
+    return { success: true };
+  };
+
   return (
     <div className="app-container">
       <div className="sidebar">
@@ -809,7 +840,11 @@ const App: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <LLMPane onGenerateCode={handleCodeChange} systemPrompt={SYSTEM_PROMPT} />
+                <LLMPane 
+                  currentCode={code}
+                  onUpdateCode={handleAgentUpdateCode} 
+                  systemPrompt={SYSTEM_PROMPT} 
+                />
               )}
             </div>
           </div>
