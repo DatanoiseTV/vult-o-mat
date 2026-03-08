@@ -59,6 +59,10 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const [expandedThoughts, setExpandedThoughts] = useState<Set<string>>(new Set());
   const [tokens, setTokens] = useState({ prompt: 0, completion: 0, total: 0 });
   const [currentTurn, setCurrentTurn] = useState(0);
+  const [turnStartTime, setTurnStartTime] = useState<number | null>(null);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [elapsedTurn, setElapsedTurn] = useState(0);
+  const [elapsedSession, setElapsedSession] = useState(0);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef(currentCode);
@@ -106,6 +110,23 @@ const LLMPane: React.FC<LLMPaneProps> = ({
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    let timer: number;
+    if (isLoading) {
+      timer = window.setInterval(() => {
+        if (turnStartTime) setElapsedTurn(Math.floor((Date.now() - turnStartTime) / 1000));
+        if (sessionStartTime) setElapsedSession(Math.floor((Date.now() - sessionStartTime) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isLoading, turnStartTime, sessionStartTime]);
+
+  const formatTime = (s: number) => {
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   useEffect(() => {
@@ -664,13 +685,16 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     let turnCount = 0;
     const MAX_TURNS = 50;
     setCurrentTurn(0);
-    
+    setSessionStartTime(Date.now());
+    setElapsedSession(0);
+
     try {
       while (!stopFlagRef.current && turnCount < MAX_TURNS) {
         turnCount++;
         setCurrentTurn(turnCount);
-        setStatus(`Thinking (Turn ${turnCount})...`);
-        
+        setTurnStartTime(Date.now());
+        setElapsedTurn(0);
+        setStatus(`Thinking (Turn ${turnCount})...`);        
         let modelParts: MessagePart[] = [];
         let currentTextId = "";
         let currentThoughtId = "";
@@ -814,10 +838,15 @@ const LLMPane: React.FC<LLMPaneProps> = ({
 
         currentConversation.push({ role: 'model', parts: modelParts });
 
-        const functionCalls = modelParts.filter(p => !!p.functionCall).map(p => p.functionCall);
+        const functionCalls = modelParts.filter(p => !!p.functionCall).map(p => {
+          const partIndex = modelParts.indexOf(p);
+          return {
+            ...p.functionCall,
+            thought_signature: (modelParts[partIndex] as any).thought_signature || (modelParts[partIndex] as any).thoughtSignature
+          };
+        });
 
-        if (functionCalls.length > 0) {
-          let functionResponses: MessagePart[] = [];
+        if (functionCalls.length > 0) {          let functionResponses: MessagePart[] = [];
           
           const toolLabels: Record<string, string> = {
             'get_current_code': '[RESEARCH] Reading source code context',
@@ -1159,7 +1188,11 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               result = { response: userResponse };
             }
 
-            functionResponses.push({ functionResponse: { name: fc.name, response: result } });
+            functionResponses.push({ 
+              functionResponse: { name: fc.name, response: result },
+              thought_signature: fc.thought_signature,
+              thoughtSignature: fc.thought_signature
+            } as any);
           }
           currentConversation.push({ role: 'user', parts: functionResponses });
         } else {
@@ -1225,7 +1258,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
             <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>Vult Agent</span>
           </div>
           <div style={{ fontSize: '10px', color: '#00ff00', marginTop: '2px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 5px rgba(0,255,0,0.3)' }}>
-            TOKENS: {tokens.total.toLocaleString()} {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'}`}
+            TOKENS: {tokens.total.toLocaleString()} {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'} (${formatTime(elapsedTurn)})`} | SESSION: {formatTime(elapsedSession)}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
