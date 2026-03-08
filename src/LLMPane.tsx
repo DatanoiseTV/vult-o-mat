@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Loader2, Settings, Activity, StopCircle } from 'lucide-react';
+import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, User, Bot } from 'lucide-react';
 
 interface LLMPaneProps {
   currentCode: string;
@@ -13,7 +13,12 @@ interface LLMPaneProps {
   systemPrompt: string;
 }
 
-type MessagePart = { text?: string; thought?: string; functionCall?: any; functionResponse?: any };
+type MessagePart = { 
+  text?: string; 
+  thought?: string; 
+  functionCall?: any; 
+  functionResponse?: any 
+};
 type Message = { role: 'user' | 'model', parts: MessagePart[] };
 
 const LLMPane: React.FC<LLMPaneProps> = ({ 
@@ -24,14 +29,25 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [displayMessages, setDisplayMessages] = useState<{ role: 'user' | 'assistant' | 'system', content: string, isStreaming?: boolean }[]>([]);
+  
+  // displayMessages for the chat UI
+  const [displayMessages, setDisplayMessages] = useState<{ 
+    role: 'user' | 'assistant' | 'system' | 'thought', 
+    content: string, 
+    id: string,
+    isStreaming?: boolean,
+    choices?: {label: string, value: string}[]
+  }[]>([]);
+
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('gemini-2.0-flash-lite-preview-02-05');
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedThoughts, setExpandedThoughts] = useState<Set<string>>(new Set());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef(currentCode);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const askUserResolverRef = useRef<((val: string) => void) | null>(null);
 
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
@@ -57,22 +73,33 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     localStorage.setItem('gemini_model_name', model);
   };
 
-  const addDisplayMsg = (role: 'user' | 'assistant' | 'system', content: string, isStreaming = false) => {
+  const toggleThought = (id: string) => {
+    setExpandedThoughts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const addDisplayMsg = (role: 'user' | 'assistant' | 'system' | 'thought', content: string, id: string = Math.random().toString(36), isStreaming = false, choices?: {label: string, value: string}[]) => {
     setDisplayMessages(prev => {
-      if (isStreaming && prev.length > 0 && prev[prev.length - 1].role === 'assistant' && prev[prev.length - 1].isStreaming) {
+      if (isStreaming && prev.length > 0 && prev[prev.length - 1].id === id) {
         const next = [...prev];
         next[next.length - 1] = { ...next[next.length - 1], content: prev[prev.length - 1].content + content };
         return next;
       }
-      return [...prev, { role, content, isStreaming }];
+      return [...prev, { role, content, id, isStreaming, choices }];
     });
+    return id;
   };
 
-  const finalizeStreamingMsg = () => {
+  const finalizeStreamingMsg = (id: string) => {
     setDisplayMessages(prev => {
-      if (prev.length > 0 && prev[prev.length - 1].isStreaming) {
+      const idx = prev.findIndex(m => m.id === id);
+      if (idx !== -1) {
         const next = [...prev];
-        next[next.length - 1] = { ...next[next.length - 1], isStreaming: false };
+        next[idx] = { ...next[idx], isStreaming: false };
         return next;
       }
       return prev;
@@ -87,7 +114,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         functionDeclarations: [
           {
             name: "update_code",
-            description: "Replaces the entire Vult code in the editor with new code. ALWAYS provide the COMPLETE code file. Use this to implement features or make large changes.",
+            description: "Replaces the entire Vult code in the editor with new code. ALWAYS provide the COMPLETE code file.",
             parameters: {
               type: "OBJECT",
               properties: { new_code: { type: "STRING", description: "The complete, updated Vult code." } },
@@ -171,8 +198,41 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           },
           {
             name: "get_live_telemetry",
-            description: "Retrieves the current values of all internal Vult variables (live telemetry). Use this to verify code behavior.",
+            description: "Retrieves the current values of all internal Vult variables (live telemetry).",
             parameters: { type: "OBJECT", properties: {} }
+          },
+          {
+            name: "ask_user",
+            description: "Asks the user a question. Can include multiple choice options.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                question: { type: "STRING", description: "The question to ask." },
+                options: { 
+                  type: "ARRAY", 
+                  items: { 
+                    type: "OBJECT",
+                    properties: {
+                      label: { type: "STRING" },
+                      value: { type: "STRING" }
+                    }
+                  },
+                  description: "Optional list of choices for the user."
+                }
+              },
+              required: ["question"]
+            }
+          },
+          {
+            name: "user_message",
+            description: "Displays a status message or update to the user about what you are currently doing.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                message: { type: "STRING", description: "The message to display." }
+              },
+              required: ["message"]
+            }
           }
         ]
       }],
@@ -200,7 +260,6 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       abortControllerRef.current.abort();
       setIsLoading(false);
       setStatus("Stopped.");
-      finalizeStreamingMsg();
     }
   };
 
@@ -216,6 +275,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         const reader = stream.getReader();
         const decoder = new TextDecoder();
         let modelParts: MessagePart[] = [];
+        let currentTextId = "";
+        let currentThoughtId = "";
 
         while (true) {
           const { done, value } = await reader.read();
@@ -228,11 +289,18 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               try {
                 const data = JSON.parse(line.substring(6));
                 const incomingParts = data.candidates?.[0]?.content?.parts || [];
+                
                 for (const part of incomingParts) {
                   modelParts.push(part);
                   if (part.text) {
                     setStatus("Typing...");
-                    addDisplayMsg('assistant', part.text, true);
+                    if (!currentTextId) currentTextId = addDisplayMsg('assistant', "", undefined, true);
+                    addDisplayMsg('assistant', part.text, currentTextId, true);
+                  }
+                  if (part.thought) {
+                    setStatus("Thinking deeply...");
+                    if (!currentThoughtId) currentThoughtId = addDisplayMsg('thought', "", undefined, true);
+                    addDisplayMsg('thought', part.thought, currentThoughtId, true);
                   }
                 }
               } catch (e) {}
@@ -240,7 +308,9 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           }
         }
 
-        finalizeStreamingMsg();
+        if (currentTextId) finalizeStreamingMsg(currentTextId);
+        if (currentThoughtId) finalizeStreamingMsg(currentThoughtId);
+
         currentConversation.push({ role: 'model', parts: modelParts });
 
         const functionCalls = modelParts.filter(p => !!p.functionCall).map(p => p.functionCall);
@@ -250,12 +320,13 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           for (const fc of functionCalls) {
             const name = fc.name.includes(':') ? fc.name.split(':').pop() : fc.name;
             setStatus(`Executing ${name}...`);
-            addDisplayMsg('system', `🛠️ Tool: ${name}`);
             
             let result: any = {};
             if (name === 'get_current_code') {
+              addDisplayMsg('system', `🛠️ Tool: get_current_code`);
               result = { code: codeRef.current };
             } else if (name === 'grep_search') {
+              addDisplayMsg('system', `🛠️ Tool: grep_search("${fc.args.pattern}")`);
               const lines = codeRef.current.split('\n');
               try {
                 const regex = new RegExp(fc.args.pattern, 'i');
@@ -263,6 +334,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
                 result = { matches: matches.length > 0 ? matches : ["No matches found."] };
               } catch(e: any) { result = { error: e.message }; }
             } else if (name === 'apply_diff') {
+              addDisplayMsg('system', `🛠️ Tool: apply_diff`);
               const { old_string, new_string } = fc.args;
               if (codeRef.current.includes(old_string)) {
                 const newCode = codeRef.current.replace(old_string, new_string);
@@ -279,30 +351,46 @@ const LLMPane: React.FC<LLMPaneProps> = ({
                 result = { success: false, error: "Pattern not found." };
               }
             } else if (name === 'update_code') {
+              addDisplayMsg('system', `🛠️ Tool: update_code`);
               const res = await onUpdateCode(fc.args.new_code);
               if (res.success) {
-                addDisplayMsg('system', `✅ Updated and compiled.`);
+                addDisplayMsg('system', `✅ Updated code.`);
                 result = { success: true };
               } else {
                 addDisplayMsg('system', `❌ Failed:\n${res.error}`);
                 result = { success: false, error: res.error };
               }
             } else if (name === 'set_knob') {
+              addDisplayMsg('system', `🛠️ Tool: set_knob(${fc.args.cc}, ${fc.args.value})`);
               onSetKnob(fc.args.cc, fc.args.value);
               result = { success: true };
             } else if (name === 'trigger_generator') {
+              addDisplayMsg('system', `🛠️ Tool: trigger_generator(${fc.args.index})`);
               onTriggerGenerator(fc.args.index);
               result = { success: true };
             } else if (name === 'configure_lab_input') {
+              addDisplayMsg('system', `🛠️ Tool: configure_lab_input`);
               onConfigureInput(fc.args.index, fc.args);
               result = { success: true };
             } else if (name === 'load_preset') {
+              addDisplayMsg('system', `🛠️ Tool: load_preset("${fc.args.name}")`);
               onLoadPreset(fc.args.name);
               result = { success: true };
             } else if (name === 'list_presets') {
               result = { presets: getPresets() };
             } else if (name === 'get_live_telemetry') {
               result = { telemetry: getTelemetry() };
+            } else if (name === 'user_message') {
+              addDisplayMsg('assistant', fc.args.message);
+              result = { success: true };
+            } else if (name === 'ask_user') {
+              setStatus("Waiting for user...");
+              addDisplayMsg('assistant', fc.args.question, undefined, false, fc.args.options);
+              const userResponse = await new Promise<string>((resolve) => {
+                askUserResolverRef.current = resolve;
+              });
+              askUserResolverRef.current = null;
+              result = { response: userResponse };
             }
 
             functionResponses.push({ functionResponse: { name: fc.name, response: result } });
@@ -324,6 +412,14 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   };
 
   const handleSend = () => {
+    if (askUserResolverRef.current) {
+      const userInput = input;
+      setInput('');
+      addDisplayMsg('user', userInput);
+      askUserResolverRef.current(userInput);
+      return;
+    }
+
     if (!input.trim() || isLoading) return;
     const userInput = input;
     setInput('');
@@ -336,6 +432,13 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     }
     const newUserMsg: Message = { role: 'user', parts: [{ text: userInput }] };
     processAgentLoop([...messages, newUserMsg]);
+  };
+
+  const handleChoice = (val: string) => {
+    if (askUserResolverRef.current) {
+      addDisplayMsg('user', `Selected: ${val}`);
+      askUserResolverRef.current(val);
+    }
   };
 
   return (
@@ -380,24 +483,58 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '16px', scrollBehavior: 'smooth' }}>
-        {displayMessages.map((m, i) => (
-          <div key={i} style={{ 
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px', scrollBehavior: 'smooth' }}>
+        {displayMessages.map((m) => (
+          <div key={m.id} style={{ 
             alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-            width: m.role === 'system' ? '100%' : 'auto',
-            background: m.role === 'user' ? '#007acc' : (m.role === 'system' ? 'transparent' : '#2d2d2d'),
-            borderLeft: m.role === 'system' ? '2px solid #444' : 'none',
-            color: m.role === 'system' ? '#888' : '#fff',
-            padding: m.role === 'system' ? '4px 12px' : '10px 14px',
+            width: m.role === 'system' || m.role === 'thought' ? '100%' : 'auto',
+            background: m.role === 'user' ? '#007acc' : (m.role === 'assistant' ? '#2d2d2d' : 'transparent'),
+            borderLeft: m.role === 'system' ? '2px solid #444' : (m.role === 'thought' ? '2px solid #333' : 'none'),
+            color: m.role === 'system' ? '#888' : (m.role === 'thought' ? '#555' : '#fff'),
+            padding: m.role === 'system' || m.role === 'thought' ? '4px 12px' : '10px 14px',
             borderRadius: '12px',
-            maxWidth: m.role === 'system' ? '100%' : '85%',
-            fontSize: m.role === 'system' ? '11px' : '13px',
+            maxWidth: m.role === 'system' || m.role === 'thought' ? '100%' : '85%',
+            fontSize: m.role === 'system' || m.role === 'thought' ? '11px' : '13px',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            fontFamily: m.role === 'system' ? 'monospace' : 'inherit',
-            boxShadow: m.role === 'system' ? 'none' : '0 2px 8px rgba(0,0,0,0.2)'
+            fontFamily: m.role === 'system' || m.role === 'thought' ? 'monospace' : 'inherit',
+            boxShadow: m.role === 'system' || m.role === 'thought' ? 'none' : '0 2px 8px rgba(0,0,0,0.2)',
+            position: 'relative'
           }}>
-            {m.content}
+            {m.role === 'thought' ? (
+              <div>
+                <div 
+                  onClick={() => toggleThought(m.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  {expandedThoughts.has(m.id) ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                  THOUGHTS
+                </div>
+                {expandedThoughts.has(m.id) && (
+                  <div style={{ marginTop: '4px', borderTop: '1px solid #222', paddingTop: '4px', color: '#666' }}>{m.content}</div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div style={{ position: 'absolute', top: '-14px', left: m.role === 'user' ? 'auto' : '4px', right: m.role === 'user' ? '4px' : 'auto', fontSize: '8px', color: '#555', fontWeight: 'bold' }}>
+                  {m.role === 'user' ? <><User size={8} style={{verticalAlign: 'middle'}} /> YOU</> : (m.role === 'assistant' ? <><Bot size={8} style={{verticalAlign: 'middle'}} /> VULT AGENT</> : '')}
+                </div>
+                {m.content}
+                {m.choices && (
+                  <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {m.choices.map(c => (
+                      <button 
+                        key={c.value} 
+                        onClick={() => handleChoice(c.value)}
+                        style={{ background: '#333', border: '1px solid #444', color: '#ffcc00', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         ))}
         {status && (
@@ -414,14 +551,14 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Ask the Vult Agent..."
-          disabled={isLoading}
+          placeholder={askUserResolverRef.current ? "Type your answer..." : "Ask the Vult Agent..."}
+          disabled={isLoading && !askUserResolverRef.current}
           style={{ flex: 1, background: '#252526', border: '1px solid #444', borderRadius: '20px', padding: '8px 16px', color: '#fff', fontSize: '13px', outline: 'none' }}
         />
         <button 
           onClick={handleSend} 
-          disabled={isLoading || !input.trim()} 
-          style={{ background: isLoading || !input.trim() ? '#333' : '#007acc', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', transition: 'all 0.2s' }}
+          disabled={(isLoading && !askUserResolverRef.current) || !input.trim()} 
+          style={{ background: (isLoading && !askUserResolverRef.current) || !input.trim() ? '#333' : '#007acc', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', transition: 'all 0.2s' }}
         >
           <Send size={18} />
         </button>

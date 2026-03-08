@@ -396,6 +396,8 @@ const App: React.FC = () => {
   const [editorMarkers, setEditorMarkers] = useState<any[]>([]);
   const [showInspector, setShowInspector] = useState(false);
   const [activeProbes, setActiveProbes] = useState<string[]>([]);
+  const [diffMode, setDiffMode] = useState(false);
+  const [originalCode, setOriginalCode] = useState('');
   
   const [inputs, setInputs] = useState<InputSource[]>([]);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -629,17 +631,40 @@ const App: React.FC = () => {
   };
 
   const handleAgentUpdateCode = async (newCode: string) => {
+    if (!diffMode) {
+      setOriginalCode(code);
+      setDiffMode(true);
+    }
     setCode(newCode);
+    return { success: true };
+  };
+
+  const handleAcceptDiff = async () => {
+    const newCode = code;
     localStorage.setItem('vult_session_code', newCode);
+    
     const newInputs = parseVultInputs(newCode);
     setInputs(newInputs);
+
     if (isPlaying) {
       const result = await audioEngineRef.current.updateCode(newCode);
-      if (result.success) { setStatus('Running'); setEditorMarkers([]); }
-      else { setStatus('Compile Error'); const m = parseVultError(result.error); if(m) setEditorMarkers([m]); }
-      return result;
+      if (result.success) {
+        setStatus('Running');
+        setEditorMarkers([]);
+      } else {
+        setStatus('Compile Error');
+        const marker = parseVultError(result.error);
+        if (marker) setEditorMarkers([marker]);
+      }
     }
-    return { success: true };
+    setDiffMode(false);
+    setOriginalCode('');
+  };
+
+  const handleRejectDiff = () => {
+    setCode(originalCode);
+    setDiffMode(false);
+    setOriginalCode('');
   };
 
   return (
@@ -698,13 +723,38 @@ const App: React.FC = () => {
 
         <div className="editor-layout">
           <div className="editor-container">
-            <div className="editor-wrapper" style={{ flex: 1, minHeight: 0 }}>
+            <div className="editor-wrapper" style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               <VultEditor 
                 code={code} 
                 onChange={handleCodeChange} 
                 markers={editorMarkers} 
                 onStateUpdate={(cb) => audioEngineRef.current.onStateUpdate(cb)}
+                diffMode={diffMode}
+                originalCode={originalCode}
               />
+              {diffMode && (
+                <div style={{ 
+                  position: 'absolute', 
+                  bottom: '20px', 
+                  right: '20px', 
+                  display: 'flex', 
+                  gap: '10px', 
+                  zIndex: 100 
+                }}>
+                  <button 
+                    onClick={handleRejectDiff}
+                    style={{ background: '#444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    REJECT
+                  </button>
+                  <button 
+                    onClick={handleAcceptDiff}
+                    style={{ background: '#007acc', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ACCEPT & COMPILE
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="dsp-lab">

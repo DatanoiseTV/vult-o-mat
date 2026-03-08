@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
 import type { Monaco } from '@monaco-editor/react';
 
 interface VultEditorProps {
@@ -7,6 +7,8 @@ interface VultEditorProps {
   onChange: (value: string | undefined) => void;
   markers?: any[];
   onStateUpdate: (callback: (state: Record<string, any>) => void) => () => void;
+  diffMode?: boolean;
+  originalCode?: string;
 }
 
 interface HoverData {
@@ -16,7 +18,9 @@ interface HoverData {
   value: any;
 }
 
-const VultEditor: React.FC<VultEditorProps> = ({ code, onChange, markers = [], onStateUpdate }) => {
+const VultEditor: React.FC<VultEditorProps> = ({ 
+  code, onChange, markers = [], onStateUpdate, diffMode = false, originalCode = "" 
+}) => {
   const lastCodeRef = useRef(code);
   const monacoRef = useRef<Monaco | null>(null);
   const editorRef = useRef<any>(null);
@@ -53,15 +57,14 @@ const VultEditor: React.FC<VultEditorProps> = ({ code, onChange, markers = [], o
   }, [onStateUpdate]);
 
   useEffect(() => {
-    if (monacoRef.current && editorRef.current) {
+    if (monacoRef.current && editorRef.current && !diffMode) {
       monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), 'vult', markers);
     }
-  }, [markers]);
+  }, [markers, diffMode]);
 
-  const handleEditorDidMount = (editor: any, monaco: Monaco) => {
-    monacoRef.current = monaco;
-    editorRef.current = editor;
-
+  const setupMonaco = (monaco: Monaco) => {
+    if (monaco.languages.getLanguages().some((l: any) => l.id === 'vult')) return;
+    
     monaco.languages.register({ id: 'vult' });
     monaco.languages.setMonarchTokensProvider('vult', {
       tokenizer: {
@@ -75,9 +78,16 @@ const VultEditor: React.FC<VultEditorProps> = ({ code, onChange, markers = [], o
         ],
       },
     });
+  };
+
+  const handleEditorDidMount = (editor: any, monaco: Monaco) => {
+    monacoRef.current = monaco;
+    editorRef.current = editor;
+    setupMonaco(monaco);
 
     // Handle mouse movement for live hover
     editor.onMouseMove((e: any) => {
+      if (diffMode) return; // Disable hover in diff mode for now
       if (e.target && e.target.range) {
         const word = editor.getModel().getWordAtPosition(e.target.range.getStartPosition());
         if (word) {
@@ -97,6 +107,11 @@ const VultEditor: React.FC<VultEditorProps> = ({ code, onChange, markers = [], o
     });
 
     editor.onMouseLeave(() => setHoverData(null));
+  };
+
+  const handleDiffMount = (_editor: any, monaco: Monaco) => {
+    monacoRef.current = monaco;
+    setupMonaco(monaco);
   };
 
   const handleOnChange = (value: string | undefined) => {
@@ -124,27 +139,45 @@ const VultEditor: React.FC<VultEditorProps> = ({ code, onChange, markers = [], o
 
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      <Editor
-        height="100%"
-        defaultLanguage="vult"
-        value={code}
-        theme="vs-dark"
-        onChange={handleOnChange}
-        onMount={handleEditorDidMount}
-        options={{
-          minimap: { enabled: false },
-          fontSize: 14,
-          automaticLayout: true,
-          fontFamily: "'Fira Code', monospace",
-          lineNumbers: 'on',
-          scrollBeyondLastLine: false,
-          glyphMargin: true,
-          hover: { enabled: false } // Disable native static hover
-        }}
-      />
+      {diffMode ? (
+        <DiffEditor
+          height="100%"
+          original={originalCode}
+          modified={code}
+          language="vult"
+          theme="vs-dark"
+          onMount={handleDiffMount}
+          options={{
+            renderSideBySide: true,
+            readOnly: true,
+            fontSize: 14,
+            automaticLayout: true,
+            fontFamily: "'Fira Code', monospace",
+          }}
+        />
+      ) : (
+        <Editor
+          height="100%"
+          defaultLanguage="vult"
+          value={code}
+          theme="vs-dark"
+          onChange={handleOnChange}
+          onMount={handleEditorDidMount}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            automaticLayout: true,
+            fontFamily: "'Fira Code', monospace",
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            glyphMargin: true,
+            hover: { enabled: false }
+          }}
+        />
+      )}
 
       {/* LIVE FLOATING HOVER */}
-      {hoverData && (
+      {hoverData && !diffMode && (
         <div style={{
           position: 'fixed',
           left: hoverData.x,
