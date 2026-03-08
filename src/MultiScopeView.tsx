@@ -41,10 +41,24 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, getProbedData }
       ctx.fillRect(0, 0, drawWidth, drawHeight);
 
       // Draw Grid
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.05)';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < drawWidth; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, drawHeight); ctx.stroke(); }
-      for (let i = 0; i < drawHeight; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(drawWidth, i); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.15)'; // Brighter grid lines
+      ctx.lineWidth = 0.5;
+      
+      // Vertical grid lines (time)
+      for (let i = 0; i < drawWidth; i += 40) { 
+        ctx.beginPath(); 
+        ctx.moveTo(i, 0); 
+        ctx.lineTo(i, drawHeight); 
+        ctx.stroke(); 
+      }
+      
+      // Horizontal grid lines (value)
+      for (let i = 0; i < drawHeight; i += 20) { 
+        ctx.beginPath(); 
+        ctx.moveTo(0, i); 
+        ctx.lineTo(drawWidth, i); 
+        ctx.stroke(); 
+      }
 
       if (probes.length === 0) {
         ctx.fillStyle = '#444';
@@ -72,6 +86,16 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, getProbedData }
       const laneHeight = drawHeight / probes.length;
 
       probes.forEach((probe, idx) => {
+        // Draw Lane Separator
+        if (idx > 0) {
+          ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, idx * laneHeight);
+          ctx.lineTo(drawWidth, idx * laneHeight);
+          ctx.stroke();
+        }
+
         const history = historyRef.current[probe];
         if (!history || history.length < 2) return;
 
