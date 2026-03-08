@@ -28,6 +28,7 @@ export class AudioEngine {
   private spectrumBuffer: Uint8Array;
   private isPlaying = false;
   private liveState: Record<string, any> = {};
+  private telemetryHistory: Record<string, any>[] = [];
   private probedStates: Record<string, number[]> = {};
   private audioMetrics: Record<string, number> = { peak: 0, rms: 0, clippingCount: 0, headroom: 0 };
   
@@ -115,6 +116,13 @@ export class AudioEngine {
       this.workletNode.port.onmessage = (event) => {
         if (event.data.type === 'telemetry') {
           this.liveState = event.data.state || {};
+          
+          // Maintain a rolling history of the last 20 states
+          this.telemetryHistory.push({ ...this.liveState });
+          if (this.telemetryHistory.length > 20) {
+            this.telemetryHistory.shift();
+          }
+
           const probes = event.data.probes || {};
           
           if (event.data.metrics) {
@@ -193,7 +201,13 @@ export class AudioEngine {
     }
   }
 
-  public getLiveState() { return this.liveState; }
+  public getLiveState() {
+    return this.liveState;
+  }
+
+  public getTelemetryHistory() {
+    return this.telemetryHistory;
+  }
   public getProbedStates() { return this.probedStates; }
   public getAudioMetrics() { return this.audioMetrics; }
 

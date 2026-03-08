@@ -14,6 +14,7 @@ interface LLMPaneProps {
   getPresets: () => string[];
   getSequencerState: () => any;
   getTelemetry: () => Record<string, any>;
+  getTelemetryHistory: () => Record<string, any>[];
   getSpectrum: () => number[];
   getPeakFrequencies: (count?: number) => {energy: number, frequency: number}[];
   getAudioMetrics: () => Record<string, number>;
@@ -33,7 +34,7 @@ type Message = { role: 'user' | 'model', parts: MessagePart[] };
 const LLMPane: React.FC<LLMPaneProps> = ({ 
   currentCode, onUpdateCode, onSetKnob, onTriggerGenerator, 
   onConfigureInput, onLoadPreset, onSaveSnapshot, onSetProbes, onConfigureSequencer, 
-  getPresets, getSequencerState, getTelemetry, getSpectrum, getPeakFrequencies, getAudioMetrics, systemPrompt 
+  getPresets, getSequencerState, getTelemetry, getTelemetryHistory, getSpectrum, getPeakFrequencies, getAudioMetrics, systemPrompt 
 }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -320,6 +321,18 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           type: "OBJECT",
           properties: {
             key: { type: "STRING", description: "The full path of the variable." }
+          },
+          required: ["key"]
+        }
+      },
+      {
+        name: "get_state_history",
+        description: "Retrieves a list of recent values for a specific variable (max 10). Use this to track changes over time, like envelope sweeps or state transitions.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            key: { type: "STRING", description: "The full path of the variable." },
+            count: { type: "NUMBER", description: "Number of historical snapshots to return (default 5, max 10)." }
           },
           required: ["key"]
         }
@@ -789,8 +802,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({
             'list_presets': '[RESEARCH] Browsing library',
             'get_live_telemetry': '[RESEARCH] Inspecting memory',
             'get_state': '[RESEARCH] Reading specific state',
-            'get_spectrum_data': '[RESEARCH] Analyzing spectrum',
-            'get_peak_frequencies': '[RESEARCH] Finding peak frequencies',
+            'get_state_history': '[RESEARCH] Tracking state history',
+            'get_spectrum_data': '[RESEARCH] Analyzing spectrum',            'get_peak_frequencies': '[RESEARCH] Finding peak frequencies',
             'get_audio_metrics': '[RESEARCH] Measuring audio quality',
             'user_message': '[STATUS] Sending status update',
             'ask_user': '[STATUS] Requesting guidance',
@@ -945,6 +958,13 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               const telemetry = getTelemetry();
               addDisplayMsg('system', `[RESEARCH] Reading state: ${key}`);
               result = { [key]: telemetry[key] !== undefined ? telemetry[key] : "Variable not found." };
+            } else if (name === 'get_state_history') {
+              const key = fc.args.key;
+              const count = Math.min(10, fc.args.count || 5);
+              addDisplayMsg('system', `[RESEARCH] Tracking history: ${key}`);
+              const history = getTelemetryHistory();
+              const values = history.slice(-count).map(h => h[key]).filter(v => v !== undefined);
+              result = { [key]: values.length > 0 ? values : "Variable not found in history." };
             } else if (name === 'get_spectrum_data') {
               addDisplayMsg('system', `[RESEARCH] Capturing frequency spectrum snapshot`);
               result = { spectrum: getSpectrum() };
