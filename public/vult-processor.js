@@ -69,12 +69,15 @@ class VultProcessor extends AudioWorkletProcessor {
                        "var exports = {};\n" + 
                        data.jsCode + "\n" +
                        "if (typeof vultProcess !== 'undefined') return vultProcess;\n" +
+                       "if (typeof VultProcess !== 'undefined') return VultProcess;\n" +
                        "if (typeof exports !== 'undefined' && exports.vultProcess) return exports.vultProcess;\n" +
+                       "if (typeof exports !== 'undefined' && exports.VultProcess) return exports.VultProcess;\n" +
+                       "if (typeof Vult !== 'undefined') return Vult;\n" +
                        "return null;";
           
           const factory = new Function(body);
           const VultConstructor = factory();
-          if (!VultConstructor) throw new Error("vultProcess class not found");
+          if (!VultConstructor) throw new Error("Vult process class not found in compiled JS");
           
           const instance = new VultConstructor();
           instance._processFn = instance.liveProcess || instance.process;
@@ -90,10 +93,9 @@ class VultProcessor extends AudioWorkletProcessor {
         }
       } else if (type === 'setSources') {
         this.sources = data.sources || [];
-        if (this.phases.length !== this.sources.length) {
-          this.phases = new Array(this.sources.length).fill(0);
-          this.genStates = new Array(this.sources.length).fill(0);
-        }
+        // Ensure phases and genStates match sources length
+        this.phases = new Array(this.sources.length).fill(0);
+        this.genStates = new Array(this.sources.length).fill(0);
       } else if (type === 'setSampleData') {
         this.sampleBuffers[data.index] = data.buffer;
         this.phases[data.index] = 0;
@@ -265,6 +267,11 @@ class VultProcessor extends AudioWorkletProcessor {
             outL = typeof result === 'number' ? result : 0;
             outR = outL;
           }
+          
+          // Protection against NaN/Infinity
+          if (isNaN(outL) || !isFinite(outL)) outL = 0;
+          if (isNaN(outR) || !isFinite(outR)) outR = 0;
+
           outputL[i] = outL;
           if (outputR) outputR[i] = outR;
 
@@ -291,7 +298,7 @@ class VultProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // Update global metrics (running average/peak)
+    // Update global metrics
     this.metrics.peak = blockPeak;
     this.metrics.rms = Math.sqrt(sumSq / numSamples);
     this.metrics.clippingCount = blockClips;
