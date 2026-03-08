@@ -11,12 +11,11 @@ A professional-grade web-based micro-IDE for testing, making, and rapid prototyp
   - **Live Hardware Input:** Route microphones or audio interfaces directly.
   - **CV Controls:** Manual sliders for parameter tweaking.
 - **Professional MIDI Interface:**
-  - **2-Octave Studio Keyboard:** Ableton-style computer keyboard mapping.
+  - **2-Octave Studio Keyboard:** computer keyboard mapping.
   - **Extended CC Controller:** 12 virtual knobs (CC 30-41) for deep parameter control.
   - **WebMIDI Support:** Connect external hardware controllers.
 - **Advanced Visualization:** CRT-style analog Phosphor Scope and Spectrum Analyzer.
 - **AI-Powered DSP Assistant:** Integrated Gemini LLM specifically tuned for Vult DSP development.
-- **Industrial Stability:** Server-side compilation bridge with massive stack size support for complex patches.
 - **Hardware Ready:** Export your code to C++ for embedded platforms (Teensy, Daisy, etc.).
 
 ## Getting Started
