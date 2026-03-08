@@ -8,7 +8,14 @@ interface VirtualMIDIProps {
   onNoteOff: (note: number) => void;
 }
 
-const KNOB_CCS = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41];
+const KNOB_CCS = [30, 31, 32, 35, 74, 71, 76, 77, 40, 73, 75, 79, 72, 80, 81, 82, 45];
+
+const CC_LABELS: Record<number, string> = {
+  30: 'SAW/SQR', 31: 'SINE LVL', 32: 'PWM AMT', 35: 'LFO RATE',
+  74: 'LPF CUT', 71: 'LPF RES', 76: 'HPF CUT', 77: 'HPF RES', 40: 'F-EG AMT',
+  73: 'ENV A', 75: 'ENV D', 79: 'ENV S', 72: 'ENV R',
+  80: 'RM DPTH', 81: 'RM RATE', 82: 'RM ENV', 45: 'CHORUS'
+};
 
 const KEY_LABELS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const KEY_TYPES = ['white', 'black', 'white', 'black', 'white', 'white', 'black', 'white', 'black', 'white', 'black', 'white'];
@@ -24,14 +31,17 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff }) 
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [octave, setOctave] = useState(3);
   const [velocity, setVelocity] = useState(100);
-  const [ccValues, setCcValues] = useState<Record<number, number>>(
-    KNOB_CCS.reduce((acc, cc) => ({ ...acc, [cc]: 64 }), {})
-  );
+  const [ccValues, setCcValues] = useState<Record<number, number>>({});
   
   const containerRef = useRef<HTMLDivElement>(null);
   const [numKeys, setNumKeys] = useState(25);
 
   const baseNote = octave * 12 + 12;
+
+  // Initialize CC values if empty
+  useEffect(() => {
+    setCcValues(KNOB_CCS.reduce((acc, cc) => ({ ...acc, [cc]: 64 }), {}));
+  }, []);
 
   // Adaptive keyboard width logic
   useEffect(() => {
@@ -189,8 +199,8 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff }) 
         {KNOB_CCS.map(cc => (
           <Knob 
             key={cc} 
-            label={`CC ${cc}`} 
-            value={ccValues[cc]} 
+            label={CC_LABELS[cc] || `CC ${cc}`} 
+            value={ccValues[cc] || 0} 
             min={0} 
             max={127} 
             onChange={(val) => handleCCChange(cc, val)} 
