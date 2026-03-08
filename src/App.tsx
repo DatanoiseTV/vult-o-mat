@@ -440,7 +440,12 @@ const App: React.FC = () => {
         <div className="editor-layout">
           <div className="editor-container">
             <div style={{ flex: 1, minHeight: '300px' }}>
-              <VultEditor code={code} onChange={handleCodeChange} markers={editorMarkers} />
+              <VultEditor 
+                code={code} 
+                onChange={handleCodeChange} 
+                markers={editorMarkers} 
+                getLiveState={() => audioEngineRef.current.getLiveState()}
+              />
             </div>
             
             <div className="dsp-lab">

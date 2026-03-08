@@ -11,22 +11,27 @@ class VultProcessor extends AudioWorkletProcessor {
       const { type, data } = event.data;
       if (type === 'updateCode') {
         try {
-          // Standard Vult JS wrapper from generateJSCode defines 'vultProcess' class
-          // We must EXPLICITLY return it from the function constructor
-          const factory = new Function(data.jsCode + "\n return vultProcess;");
+          // Use a more robust way to capture the vultProcess class.
+          // We wrap the code in a function that returns the class defined within it.
+          const factory = new Function(`
+            ${data.jsCode}
+            if (typeof vultProcess !== 'undefined') return vultProcess;
+            if (typeof exports !== 'undefined' && exports.vultProcess) return exports.vultProcess;
+            throw new Error("Could not find vultProcess class in generated code.");
+          `);
+          
           const VultConstructor = factory();
           
-          if (!VultConstructor) {
-            throw new Error("vultProcess class not found in generated code.");
+          if (typeof VultConstructor !== 'function') {
+            throw new Error("vultProcess is not a constructor (type: " + typeof VultConstructor + ")");
           }
           
           this.vultInstance = new VultConstructor();
           
-          // Ensure we call default if available to set initial state
-          if (this.vultInstance.liveDefault) {
-            this.vultInstance.liveDefault();
-          } else if (this.vultInstance.default) {
-            this.vultInstance.default();
+          // Ensure initial state is set
+          const initFn = this.vultInstance.liveDefault || this.vultInstance.default;
+          if (typeof initFn === 'function') {
+            initFn.call(this.vultInstance);
           }
           
           this.port.postMessage({ type: 'status', success: true });
@@ -42,17 +47,17 @@ class VultProcessor extends AudioWorkletProcessor {
       } else if (type === 'noteOn') {
         if (this.vultInstance) {
           const fn = this.vultInstance.liveNoteOn || this.vultInstance.noteOn;
-          if (fn) fn.call(this.vultInstance, data.note, data.velocity, data.channel);
+          if (typeof fn === 'function') fn.call(this.vultInstance, data.note, data.velocity, data.channel);
         }
       } else if (type === 'noteOff') {
         if (this.vultInstance) {
           const fn = this.vultInstance.liveNoteOff || this.vultInstance.noteOff;
-          if (fn) fn.call(this.vultInstance, data.note, data.channel);
+          if (typeof fn === 'function') fn.call(this.vultInstance, data.note, data.channel);
         }
       } else if (type === 'controlChange') {
         if (this.vultInstance) {
           const fn = this.vultInstance.liveControlChange || this.vultInstance.controlChange;
-          if (fn) fn.call(this.vultInstance, data.control, data.value, data.channel);
+          if (typeof fn === 'function') fn.call(this.vultInstance, data.control, data.value, data.channel);
         }
       } else if (type === 'setSampleRate') {
         this.sampleRate = data.sampleRate || 44100;
@@ -99,12 +104,9 @@ class VultProcessor extends AudioWorkletProcessor {
 
       if (this.vultInstance) {
         const processFn = this.vultInstance.liveProcess || this.vultInstance.process;
-        if (processFn) {
+        if (typeof processFn === 'function') {
           try {
-            // Apply current inputs to the process function
-            // vultProcess usually takes context internally, we just pass the args
             const result = processFn.apply(this.vultInstance, inputValues);
-            
             if (typeof result === 'object' && result !== null) {
               outputL[i] = result.t0 !== undefined ? result.t0 : 0;
               if (outputR) outputR[i] = result.t1 !== undefined ? result.t1 : outputL[i];
@@ -113,13 +115,13 @@ class VultProcessor extends AudioWorkletProcessor {
               if (outputR) outputR[i] = outputL[i];
             }
           } catch (e) {
-            outputL[i] = outputR[i] = 0;
+            outputL[i] = 0; if (outputR) outputR[i] = 0;
           }
         } else {
-          outputL[i] = outputR[i] = 0;
+          outputL[i] = 0; if (outputR) outputR[i] = 0;
         }
       } else {
-        outputL[i] = outputR[i] = 0;
+        outputL[i] = 0; if (outputR) outputR[i] = 0;
       }
     }
 
