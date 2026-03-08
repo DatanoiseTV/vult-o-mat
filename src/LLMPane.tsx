@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Loader2, Key } from 'lucide-react';
+import { Send, Loader2, Settings } from 'lucide-react';
 
 interface LLMPaneProps {
   currentCode: string;
@@ -16,16 +16,18 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
   const [messages, setMessages] = useState<Message[]>([]);
   const [displayMessages, setDisplayMessages] = useState<{ role: 'user' | 'assistant' | 'system', content: string }[]>([]);
   const [apiKey, setApiKey] = useState('');
-  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [modelName, setModelName] = useState('gemini-2.0-flash-lite-preview-02-05');
+  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Keep a ref to the current code so the agent can read it at any time without stale closures
   const codeRef = useRef(currentCode);
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) setApiKey(savedKey);
+    const savedModel = localStorage.getItem('gemini_model_name');
+    if (savedModel) setModelName(savedModel);
   }, []);
 
   const scrollToBottom = () => {
@@ -36,9 +38,11 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
     scrollToBottom();
   }, [displayMessages, isLoading]);
 
-  const handleSaveKey = (key: string) => {
+  const handleSaveSettings = (key: string, model: string) => {
     setApiKey(key);
+    setModelName(model);
     localStorage.setItem('gemini_api_key', key);
+    localStorage.setItem('gemini_model_name', model);
   };
 
   const addDisplayMsg = (role: 'user' | 'assistant' | 'system', content: string) => {
@@ -56,7 +60,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
           functionDeclarations: [
             {
               name: "update_code",
-              description: "Replaces the entire Vult code in the editor with new code, compiles it, and returns the compilation result (success or error). ALWAYS provide the COMPLETE code file.",
+              description: "Replaces the entire Vult code in the editor with new code, compiles it, and returns the compilation result. ALWAYS provide the COMPLETE code file. Use this to fix errors or implement features.",
               parameters: {
                 type: "OBJECT",
                 properties: {
@@ -84,35 +88,36 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
       }
     };
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ error: { message: response.statusText } }));
+      throw new Error(errorData.error?.message || response.statusText);
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   };
 
   const processAgentLoop = async (initialMessages: Message[]) => {
-    let currentMsgs = [...initialMessages];
+    let currentConversation = [...initialMessages];
     
     try {
       while (true) {
-        const data = await callGemini(currentMsgs);
+        const data = await callGemini(currentConversation);
         const parts = data.candidates?.[0]?.content?.parts || [];
         
         if (parts.length === 0) {
-          addDisplayMsg('assistant', "Error parsing response.");
+          addDisplayMsg('assistant', "Model returned empty response.");
           break;
         }
 
-        const newModelMsg: Message = { role: 'model', parts: parts };
-        currentMsgs.push(newModelMsg);
+        // Add the model's turn to conversation
+        const modelTurn: Message = { role: 'model', parts: parts };
+        currentConversation.push(modelTurn);
 
         let needsAnotherTurn = false;
         let functionResponses: MessagePart[] = [];
@@ -123,45 +128,43 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
           }
           if (part.functionCall) {
             const { name, args } = part.functionCall;
-            addDisplayMsg('system', `🛠️ Agent called tool: ${name}`);
+            addDisplayMsg('system', `🛠️ Executing: ${name}`);
             
-            let resultObj: any = {};
+            let result: any = {};
             if (name === 'get_current_code') {
-              resultObj = { code: codeRef.current };
+              result = { code: codeRef.current };
             } else if (name === 'update_code') {
               const res = await onUpdateCode(args.new_code);
               if (res.success) {
-                addDisplayMsg('system', `✅ Code updated and compiled successfully.`);
-                resultObj = { success: true };
+                addDisplayMsg('system', `✅ Code updated and compiled.`);
+                result = { success: true };
               } else {
                 addDisplayMsg('system', `❌ Compilation failed:\n${res.error}`);
-                resultObj = { success: false, error: res.error };
+                result = { success: false, error: res.error };
               }
             }
 
             functionResponses.push({
-              functionResponse: {
-                name: name,
-                response: resultObj
-              }
+              functionResponse: { name, response: result }
             });
             needsAnotherTurn = true;
           }
         }
 
         if (needsAnotherTurn) {
-          const newUserMsg: Message = { role: 'user', parts: functionResponses };
-          currentMsgs.push(newUserMsg);
+          // Add user turn with function results
+          const responseTurn: Message = { role: 'user', parts: functionResponses };
+          currentConversation.push(responseTurn);
+          // Continue loop to let model process the results
         } else {
-          // No more tool calls, agent is done
-          break;
+          break; // Agent is finished
         }
       }
     } catch (err: any) {
-      addDisplayMsg('assistant', `Agent stopped: ${err.message}`);
+      addDisplayMsg('assistant', `⚠️ Agent Error: ${err.message}`);
     }
 
-    setMessages(currentMsgs);
+    setMessages(currentConversation);
     setIsLoading(false);
   };
 
@@ -174,10 +177,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
     addDisplayMsg('user', userInput);
 
     if (!apiKey) {
-      setTimeout(() => {
-        addDisplayMsg('assistant', "You need to set a Gemini API key first! (Click the Key icon).");
-        setIsLoading(false);
-      }, 500);
+      addDisplayMsg('assistant', "API key missing. Click the Settings icon to configure.");
+      setIsLoading(false);
       return;
     }
 
@@ -188,24 +189,32 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid #333', background: '#1e1e1e' }}>
       <div style={{ padding: '12px', borderBottom: '1px solid #333', fontWeight: 'bold', fontSize: '14px', color: '#aaa', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>Gemini AI Agent</span>
+        <span>Vult AI Assistant</span>
         <button 
-          onClick={() => setShowKeyInput(!showKeyInput)}
+          onClick={() => setShowSettings(!showSettings)}
           style={{ background: 'transparent', border: 'none', color: apiKey ? '#00ff00' : '#888', cursor: 'pointer' }}
-          title="Set Gemini API Key"
         >
-          <Key size={14} />
+          <Settings size={14} />
         </button>
       </div>
       
-      {showKeyInput && (
-        <div style={{ padding: '12px', background: '#252526', borderBottom: '1px solid #333' }}>
+      {showSettings && (
+        <div style={{ padding: '12px', background: '#252526', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '10px', color: '#888' }}>GEMINI API KEY</div>
           <input 
             type="password"
-            placeholder="Enter Gemini API Key..."
+            placeholder="Key..."
             value={apiKey}
-            onChange={(e) => handleSaveKey(e.target.value)}
-            style={{ width: '100%', background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '12px' }}
+            onChange={(e) => handleSaveSettings(e.target.value, modelName)}
+            style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
+          />
+          <div style={{ fontSize: '10px', color: '#888' }}>MODEL</div>
+          <input 
+            type="text"
+            placeholder="Model ID..."
+            value={modelName}
+            onChange={(e) => handleSaveSettings(apiKey, e.target.value)}
+            style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px' }}
           />
         </div>
       )}
@@ -237,17 +246,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Ask for an audio effect or fix errors..."
-          style={{ 
-            flex: 1, 
-            background: '#252526', 
-            border: '1px solid #444', 
-            borderRadius: '4px', 
-            padding: '8px', 
-            color: '#fff',
-            fontSize: '13px',
-            outline: 'none'
-          }}
+          placeholder="Code something..."
+          style={{ flex: 1, background: '#252526', border: '1px solid #444', borderRadius: '4px', padding: '8px', color: '#fff', fontSize: '13px', outline: 'none' }}
         />
         <button onClick={handleSend} disabled={isLoading} style={{ background: isLoading ? '#444' : '#007acc', border: 'none', borderRadius: '4px', padding: '8px', cursor: isLoading ? 'default' : 'pointer', color: '#fff' }}>
           <Send size={16} />
