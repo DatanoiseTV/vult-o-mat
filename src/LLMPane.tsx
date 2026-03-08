@@ -158,6 +158,10 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       }
       return [...prev, { role, content, id, isStreaming, choices }];
     });
+    // Auto-expand if it's a thought and streaming
+    if (role === 'thought' && isStreaming) {
+      setExpandedThoughts(prev => new Set(prev).add(id));
+    }
     return id;
   };
 
