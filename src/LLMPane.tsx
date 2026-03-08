@@ -7,7 +7,7 @@ interface LLMPaneProps {
   systemPrompt: string;
 }
 
-type MessagePart = { text: string } | { functionCall: any } | { functionResponse: any };
+type MessagePart = { text?: string; thought?: string; functionCall?: any; functionResponse?: any };
 type Message = { role: 'user' | 'model', parts: MessagePart[] };
 
 const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemPrompt }) => {
@@ -78,20 +78,20 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
         functionDeclarations: [
           {
             name: "update_code",
-            description: "Replaces the entire Vult code in the editor. ALWAYS provide the COMPLETE code file.",
+            description: "Replaces the entire Vult code in the editor with new code. ALWAYS provide the COMPLETE code file. Use this to implement features or make large changes.",
             parameters: {
               type: "OBJECT",
-              properties: { new_code: { type: "STRING" } },
+              properties: { new_code: { type: "STRING", description: "The complete, updated Vult code." } },
               required: ["new_code"]
             }
           },
           {
             name: "apply_diff",
-            description: "Applies a surgical replacement in the code. Replaces 'old_string' with 'new_string'. Use significant context to avoid ambiguity.",
+            description: "Applies a surgical replacement in the code. Replaces 'old_string' with 'new_string'. Use significant context to avoid ambiguity. Prefer this for small fixes.",
             parameters: {
               type: "OBJECT",
               properties: {
-                old_string: { type: "STRING", description: "The exact text to find." },
+                old_string: { type: "STRING", description: "The exact literal text to find." },
                 new_string: { type: "STRING", description: "The text to replace it with." }
               },
               required: ["old_string", "new_string"]
@@ -99,16 +99,16 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
           },
           {
             name: "grep_search",
-            description: "Searches for a pattern in the current code and returns matching lines with numbers.",
+            description: "Searches for a regex pattern in the current code and returns matching lines with numbers.",
             parameters: {
               type: "OBJECT",
-              properties: { pattern: { type: "STRING", description: "Regex pattern to search." } },
+              properties: { pattern: { type: "STRING", description: "The regex pattern to search for." } },
               required: ["pattern"]
             }
           },
           {
             name: "get_current_code",
-            description: "Retrieves the current Vult code.",
+            description: "Retrieves the current Vult code from the editor.",
             parameters: { type: "OBJECT", properties: {} }
           }
         ]
@@ -152,8 +152,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
 
         const reader = stream.getReader();
         const decoder = new TextDecoder();
-        let fullResponseText = '';
-        let functionCalls: any[] = [];
+        let modelParts: MessagePart[] = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -165,15 +164,19 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.substring(6));
-                const parts = data.candidates?.[0]?.content?.parts || [];
-                for (const part of parts) {
+                const incomingParts = data.candidates?.[0]?.content?.parts || [];
+                
+                for (const part of incomingParts) {
+                  // Important: collect ALL parts into modelParts for history integrity
+                  // Handle thought signatures and other parts required by the API
+                  modelParts.push(part);
+
                   if (part.text) {
                     setStatus("Typing...");
-                    fullResponseText += part.text;
                     addDisplayMsg('assistant', part.text, true);
                   }
                   if (part.functionCall) {
-                    functionCalls.push(part.functionCall);
+                    // Function calls don't need to be streamed to display
                   }
                 }
               } catch (e) {}
@@ -183,27 +186,34 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
 
         finalizeStreamingMsg();
 
-        // Prepare model turn for history
-        const modelParts: MessagePart[] = [];
-        if (fullResponseText) modelParts.push({ text: fullResponseText });
-        functionCalls.forEach(fc => modelParts.push({ functionCall: fc }));
+        // Add the complete model response to history
         currentConversation.push({ role: 'model', parts: modelParts });
+
+        // Check for function calls in the turn we just finished
+        const functionCalls = modelParts.filter(p => !!p.functionCall).map(p => p.functionCall);
 
         if (functionCalls.length > 0) {
           let functionResponses: MessagePart[] = [];
           for (const fc of functionCalls) {
-            setStatus(`Executing ${fc.name}...`);
-            addDisplayMsg('system', `🛠️ Tool: ${fc.name}`);
+            // Clean function name (strip default_api: prefix if model adds it)
+            const name = fc.name.includes(':') ? fc.name.split(':').pop() : fc.name;
+            
+            setStatus(`Executing ${name}...`);
+            addDisplayMsg('system', `🛠️ Tool: ${name}`);
             
             let result: any = {};
-            if (fc.name === 'get_current_code') {
+            if (name === 'get_current_code') {
               result = { code: codeRef.current };
-            } else if (fc.name === 'grep_search') {
+            } else if (name === 'grep_search') {
               const lines = codeRef.current.split('\n');
-              const regex = new RegExp(fc.args.pattern, 'i');
-              const matches = lines.map((l, i) => regex.test(l) ? `${i+1}: ${l}` : null).filter(Boolean);
-              result = { matches: matches.length > 0 ? matches : ["No matches found."] };
-            } else if (fc.name === 'apply_diff') {
+              try {
+                const regex = new RegExp(fc.args.pattern, 'i');
+                const matches = lines.map((l, i) => regex.test(l) ? `${i+1}: ${l}` : null).filter(Boolean);
+                result = { matches: matches.length > 0 ? matches : ["No matches found."] };
+              } catch(e: any) {
+                result = { error: `Invalid regex: ${e.message}` };
+              }
+            } else if (name === 'apply_diff') {
               const { old_string, new_string } = fc.args;
               if (codeRef.current.includes(old_string)) {
                 const newCode = codeRef.current.replace(old_string, new_string);
@@ -217,9 +227,9 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
                 }
               } else {
                 addDisplayMsg('system', `❌ Error: 'old_string' not found in code.`);
-                result = { success: false, error: "Pattern not found. Ensure exact match." };
+                result = { success: false, error: "Pattern not found. Ensure exact match including whitespace." };
               }
-            } else if (fc.name === 'update_code') {
+            } else if (name === 'update_code') {
               const res = await onUpdateCode(fc.args.new_code);
               if (res.success) {
                 addDisplayMsg('system', `✅ Updated and compiled.`);
@@ -230,11 +240,16 @@ const LLMPane: React.FC<LLMPaneProps> = ({ currentCode, onUpdateCode, systemProm
               }
             }
 
-            functionResponses.push({ functionResponse: { name: fc.name, response: result } });
+            functionResponses.push({ 
+              functionResponse: { 
+                name: fc.name, // Return exact name model used
+                response: result 
+              } 
+            });
           }
           currentConversation.push({ role: 'user', parts: functionResponses });
         } else {
-          break; // Agent finished
+          break; // Agent finished (no tool calls)
         }
       }
     } catch (err: any) {
