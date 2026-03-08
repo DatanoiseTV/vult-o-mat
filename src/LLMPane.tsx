@@ -277,8 +277,18 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         }
       },
       {
-        name: "user_message",
-        description: "Displays a status message or update to the user.",
+        name: "tell",
+        description: "Sends a status update, progress report, or informative message to the user while performing complex tasks.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            message: { type: "STRING", description: "The message to display to the user." }
+          },
+          required: ["message"]
+        }
+      },
+      {
+        name: "user_message",        description: "Displays a status message or update to the user.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -516,6 +526,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
             'get_spectrum_data': 'Analyzing spectrum',
             'get_audio_metrics': 'Measuring audio quality',
             'user_message': 'Sending status update',
+            'tell': 'Communicating with user',
             'ask_user': 'Requesting guidance'
           };
 
@@ -620,7 +631,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
             } else if (name === 'get_audio_metrics') {
               addDisplayMsg('system', `📈 Measuring output signal quality (RMS/Peak/Headroom)`);
               result = { metrics: getAudioMetrics() };
-            } else if (name === 'user_message') {
+            } else if (name === 'user_message' || name === 'tell') {
               addDisplayMsg('assistant', fc.args.message);
               result = { success: true };
             } else if (name === 'ask_user') {

@@ -24,6 +24,8 @@ The IDE features an autonomous agent designed to assist with DSP development. It
 
 *   **Autonomous Iteration:** The agent performs trial compilations of its code. If the compiler returns an error, the agent analyzes the trace and attempts to correct the logic autonomously.
 *   **Surgical Editing:** Uses precise line-editing and diff-based tools to modify specific blocks of code while maintaining the integrity of the surrounding architecture.
+*   **Persistent Workflow:** If a specific tool or strategy fails, the agent is instructed to automatically pivot to an alternative approach (e.g., from diffing to block-editing) to ensure the task is completed.
+*   **Real-time Communication:** Uses the `tell` tool to provide continuous progress updates and explain its reasoning while executing multi-step DSP tasks.
 *   **Hardware Control:** The agent can manipulate virtual CC knobs and laboratory generators to test the response of the current patch.
 *   **Verification Loop:** Can read internal memory states, capture frequency spectrum data, and analyze technical audio metrics (Peak, RMS, Headroom) to verify behavioral correctness.
 *   **Multi-Provider Support:** Supports both the Gemini 2.0 streaming API and local OpenAI-compatible endpoints (Ollama, LM Studio).
