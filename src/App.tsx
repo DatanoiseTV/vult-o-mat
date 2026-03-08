@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, AudioWaveform, Code2, Database, History, Maximize2, Minimize2, Music, Keyboard } from 'lucide-react';
+import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, AudioWaveform, Code2, Database, History, Music, Keyboard } from 'lucide-react';
 import { AudioEngine } from './AudioEngine';
 import type { InputSource, SourceType } from './AudioEngine';
 import { MIDIController } from './MIDIController';
@@ -451,13 +451,8 @@ const App: React.FC = () => {
   const [selectedMidiInput, setSelectedMidiInput] = useState<string>('all');
 
   // UI States
-  const [labHeight, setLabHeight] = useState(160);
-  const [seqHeight, setSeqHeight] = useState(150);
-  const [midiHeight, setMidiHeight] = useState(200);
-  
-  const [isLabCollapsed, setIsLabCollapsed] = useState(false);
-  const [isSeqCollapsed, setIsSeqCollapsed] = useState(false);
-  const [isMidiCollapsed, setIsMidiCollapsed] = useState(false);
+  const [labHeight, setLabHeight] = useState(250);
+  const [activeLabTab, setActiveLabTab] = useState<'lab' | 'seq' | 'midi'>('lab');
   
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const midiControllerRef = useRef<MIDIController | null>(null);
@@ -792,85 +787,81 @@ const App: React.FC = () => {
               )}
             </div>
             
-            {/* COLLAPSIBLE / RESIZABLE PANELS */}
-            
-            {/* DSP LAB */}
-            <div className="resize-handle" onMouseDown={startResizing(setLabHeight, 30, 400)} />
-            <div className={`dsp-lab ${isLabCollapsed ? 'collapsed' : ''}`} style={{ height: isLabCollapsed ? '30px' : `${labHeight}px`, flex: 'none' }}>
-              <div className="section-header" onClick={() => setIsLabCollapsed(!isLabCollapsed)}>
-                <div className="section-title"><Sliders size={12} /> DSP LAB / INPUT ROUTING</div>
-                {isLabCollapsed ? <Maximize2 size={10} /> : <Minimize2 size={10} />}
-              </div>
-              {!isLabCollapsed && (
-                <div className="input-strips">
-                  {inputs.map((input, i) => (
-                    <div key={i} className="input-strip">
-                      <div className="strip-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        {input.name}
-                        {(input.type === 'impulse' || input.type === 'step') && (
-                          <Zap size={10} style={{ cursor: 'pointer', color: '#ffcc00' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
-                        )}
-                      </div>
-                      <select value={input.type} onChange={(e) => updateInput(i, { type: e.target.value as SourceType })}>
-                        <option value="oscillator">Oscillator</option><option value="sample">Sample File</option><option value="live">Live Audio</option><option value="cv">CV Slider</option><option value="impulse">Impulse</option><option value="step">Step</option><option value="sweep">Sweep</option><option value="test_noise">Test Noise</option><option value="silence">Silence</option>
-                      </select>
-                      {input.type === 'oscillator' && (
-                        <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                          <select value={input.oscType} onChange={(e) => updateInput(i, { oscType: e.target.value as any })} style={{ marginBottom: '4px', width: '100%' }}><option value="sine">Sine</option><option value="sawtooth">Saw</option><option value="square">Square</option><option value="triangle">Tri</option></select>
-                          <Knob label="FREQ" value={input.freq} min={20} max={20000} onChange={(val) => updateInput(i, { freq: val })} size={36} />
-                        </div>
-                      )}
-                      {input.type === 'sample' && (
-                        <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center' }}>
-                          <input type="file" accept="audio/*" onChange={(e) => e.target.files && handleSampleUpload(i, e.target.files[0])} style={{ display: 'none' }} id={`sample-${i}`} />
-                          <label htmlFor={`sample-${i}`} style={{ cursor: 'pointer', fontSize: '8px', color: '#ffcc00', border: '1px solid #444', padding: '2px 4px' }}>LOAD</label>
-                          <Play size={10} style={{ cursor: 'pointer', color: '#00ff00', margin: '0 4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
-                          <Activity size={12} style={{ cursor: "pointer", color: input.isLooping ? "#00ff00" : "#444" }} onClick={() => updateInput(i, { isLooping: !input.isLooping })} />
-                        </div>
-                      )}
-                      {input.type === 'cv' && (
-                        <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                          <Knob label="VALUE" value={input.value} min={0} max={1} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={36} />
-                          <div style={{ marginTop: '4px' }}><Activity size={12} style={{ cursor: "pointer", color: input.isCycling ? "#00ff00" : "#444" }} onClick={() => updateInput(i, { isCycling: !input.isCycling })} /></div>
-                        </div>
-                      )}
-                      {input.type === 'sweep' && (
-                        <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                          <Knob label="TIME(s)" value={input.value} min={0.1} max={10.0} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={36} />
-                          <Play size={10} style={{ cursor: 'pointer', color: '#ffcc00', marginTop: '4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
-                        </div>
-                      )}
-                      {input.type === 'live' && (
-                        <select value={input.deviceId} onChange={(e) => updateInput(i, { deviceId: e.target.value })}>{audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Input'}</option>)}</select>
-                      )}
-                    </div>
-                  ))}
+            {/* TABBED LABORATORY RACK */}
+            <div className="resize-handle" onMouseDown={startResizing(setLabHeight, 100, 600)} />
+            <div className="lab-rack" style={{ height: `${labHeight}px`, flex: 'none', display: 'flex', flexDirection: 'column', background: '#1a1a1a' }}>
+              <div className="lab-tabs" style={{ display: 'flex', background: '#111', borderBottom: '1px solid #333', flexShrink: 0 }}>
+                <div className={`lab-tab ${activeLabTab === 'lab' ? 'active' : ''}`} onClick={() => setActiveLabTab('lab')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'lab' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'lab' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sliders size={12} /> DSP LAB
                 </div>
-              )}
-            </div>
-
-            {/* SEQUENCER */}
-            <div className="resize-handle" onMouseDown={startResizing(setSeqHeight, 30, 400)} />
-            <div className={`sequencer-panel ${isSeqCollapsed ? 'collapsed' : ''}`} style={{ height: isSeqCollapsed ? '30px' : `${seqHeight}px`, flex: 'none', background: '#111', borderTop: '1px solid #333' }}>
-              <div className="section-header" onClick={() => setIsSeqCollapsed(!isSeqCollapsed)} style={{ padding: '8px 12px', borderBottom: isSeqCollapsed ? 'none' : '1px solid #222' }}>
-                <div className="section-title" style={{ margin: 0 }}><Music size={12} /> TB-STYLE SEQUENCER</div>
-                {isSeqCollapsed ? <Maximize2 size={10} /> : <Minimize2 size={10} />}
+                <div className={`lab-tab ${activeLabTab === 'seq' ? 'active' : ''}`} onClick={() => setActiveLabTab('seq')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'seq' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'seq' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Music size={12} /> SEQUENCER
+                </div>
+                <div className={`lab-tab ${activeLabTab === 'midi' ? 'active' : ''}`} onClick={() => setActiveLabTab('midi')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'midi' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'midi' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Keyboard size={12} /> MIDI
+                </div>
               </div>
-              {!isSeqCollapsed && (
-                <Sequencer steps={seqSteps} setSteps={setSeqSteps} bpm={seqBpm} setBpm={setSeqBpm} isPlaying={seqPlaying} setIsPlaying={setSeqPlaying} onNoteOn={(note, vel) => audioEngineRef.current.sendNoteOn(note, vel, 0)} onNoteOff={(note) => audioEngineRef.current.sendNoteOff(note, 0)} length={seqLength} setLength={setSeqLength} />
-              )}
-            </div>
 
-            {/* MIDI CONTROLS */}
-            <div className="resize-handle" onMouseDown={startResizing(setMidiHeight, 30, 400)} />
-            <div className={`virtual-midi-panel ${isMidiCollapsed ? 'collapsed' : ''}`} style={{ height: isMidiCollapsed ? '30px' : `${midiHeight}px`, flex: 'none' }}>
-              <div className="section-header" onClick={() => setIsMidiCollapsed(!isMidiCollapsed)}>
-                <div className="section-title"><Keyboard size={12} /> MIDI CONTROLS</div>
-                {isMidiCollapsed ? <Maximize2 size={10} /> : <Minimize2 size={10} />}
+              <div className="lab-content" style={{ flex: 1, overflow: 'hidden', background: '#0a0a0a' }}>
+                {activeLabTab === 'lab' && (
+                  <div className="dsp-lab" style={{ height: '100%', overflowY: 'auto' }}>
+                    <div className="input-strips">
+                      {inputs.map((input, i) => (
+                        <div key={i} className="input-strip">
+                          <div className="strip-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            {input.name}
+                            {(input.type === 'impulse' || input.type === 'step') && (
+                              <Zap size={10} style={{ cursor: 'pointer', color: '#ffcc00' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
+                            )}
+                          </div>
+                          <select value={input.type} onChange={(e) => updateInput(i, { type: e.target.value as SourceType })}>
+                            <option value="oscillator">Oscillator</option><option value="sample">Sample File</option><option value="live">Live Audio</option><option value="cv">CV Slider</option><option value="impulse">Impulse</option><option value="step">Step</option><option value="sweep">Sweep</option><option value="test_noise">Test Noise</option><option value="silence">Silence</option>
+                          </select>
+                          {input.type === 'oscillator' && (
+                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                              <select value={input.oscType} onChange={(e) => updateInput(i, { oscType: e.target.value as any })} style={{ marginBottom: '4px', width: '100%' }}><option value="sine">Sine</option><option value="sawtooth">Saw</option><option value="square">Square</option><option value="triangle">Tri</option></select>
+                              <Knob label="FREQ" value={input.freq} min={20} max={20000} onChange={(val) => updateInput(i, { freq: val })} size={36} />
+                            </div>
+                          )}
+                          {input.type === 'sample' && (
+                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center' }}>
+                              <input type="file" accept="audio/*" onChange={(e) => e.target.files && handleSampleUpload(i, e.target.files[0])} style={{ display: 'none' }} id={`sample-${i}`} />
+                              <label htmlFor={`sample-${i}`} style={{ cursor: 'pointer', fontSize: '8px', color: '#ffcc00', border: '1px solid #444', padding: '2px 4px' }}>LOAD</label>
+                              <Play size={10} style={{ cursor: 'pointer', color: '#00ff00', margin: '0 4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
+                              <Activity size={12} style={{ cursor: "pointer", color: input.isLooping ? "#00ff00" : "#444" }} onClick={() => updateInput(i, { isLooping: !input.isLooping })} />
+                            </div>
+                          )}
+                          {input.type === 'cv' && (
+                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                              <Knob label="VALUE" value={input.value} min={0} max={1} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={36} />
+                              <div style={{ marginTop: '4px' }}><Activity size={12} style={{ cursor: "pointer", color: input.isCycling ? "#00ff00" : "#444" }} onClick={() => updateInput(i, { isCycling: !input.isCycling })} /></div>
+                            </div>
+                          )}
+                          {input.type === 'sweep' && (
+                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                              <Knob label="TIME(s)" value={input.value} min={0.1} max={10.0} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={36} />
+                              <Play size={10} style={{ cursor: 'pointer', color: '#ffcc00', marginTop: '4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
+                            </div>
+                          )}
+                          {input.type === 'live' && (
+                            <select value={input.deviceId} onChange={(e) => updateInput(i, { deviceId: e.target.value })}>{audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Input'}</option>)}</select>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {activeLabTab === 'seq' && (
+                  <div className="sequencer-panel" style={{ height: '100%', overflowY: 'auto' }}>
+                    <Sequencer steps={seqSteps} setSteps={setSeqSteps} bpm={seqBpm} setBpm={setSeqBpm} isPlaying={seqPlaying} setIsPlaying={setSeqPlaying} onNoteOn={(note, vel) => audioEngineRef.current.sendNoteOn(note, vel, 0)} onNoteOff={(note) => audioEngineRef.current.sendNoteOff(note, 0)} length={seqLength} setLength={setSeqLength} />
+                  </div>
+                )}
+                {activeLabTab === 'midi' && (
+                  <div className="virtual-midi-panel" style={{ height: '100%', overflowY: 'auto' }}>
+                    <VirtualMIDI onCC={(cc, val) => audioEngineRef.current.sendControlChange(cc, val, 0)} onNoteOn={(note, vel) => audioEngineRef.current.sendNoteOn(note, vel, 0)} onNoteOff={(note) => audioEngineRef.current.sendNoteOff(note, 0)} ccLabels={ccLabels} />
+                  </div>
+                )}
               </div>
-              {!isMidiCollapsed && (
-                <VirtualMIDI onCC={(cc, val) => audioEngineRef.current.sendControlChange(cc, val, 0)} onNoteOn={(note, vel) => audioEngineRef.current.sendNoteOn(note, vel, 0)} onNoteOff={(note) => audioEngineRef.current.sendNoteOff(note, 0)} ccLabels={ccLabels} />
-              )}
             </div>
           </div>
           
