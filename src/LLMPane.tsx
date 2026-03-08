@@ -50,6 +50,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const codeRef = useRef(currentCode);
   const abortControllerRef = useRef<AbortController | null>(null);
   const askUserResolverRef = useRef<((val: string) => void) | null>(null);
+  const stopFlagRef = useRef(false);
 
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
@@ -241,29 +242,18 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       },
       {
         name: "ask_user",
-        description: "Asks the user a question. Can include multiple choice options.",
+        description: "Asks the user a question.",
         parameters: {
           type: "OBJECT",
           properties: {
-            question: { type: "STRING", description: "The question to ask." },
-            options: { 
-              type: "ARRAY", 
-              items: { 
-                type: "OBJECT",
-                properties: {
-                  label: { type: "STRING" },
-                  value: { type: "STRING" }
-                }
-              },
-              description: "Optional list of choices for the user."
-            }
+            question: { type: "STRING", description: "The question to ask." }
           },
           required: ["question"]
         }
       },
       {
         name: "user_message",
-        description: "Displays a status message or update to the user about what you are currently doing.",
+        description: "Displays a status message or update to the user.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -367,18 +357,20 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   };
 
   const handleStop = () => {
+    stopFlagRef.current = true;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      setIsLoading(false);
-      setStatus("Stopped.");
     }
+    setIsLoading(false);
+    setStatus("Stopped.");
   };
 
   const processAgentLoop = async (initialMessages: Message[]) => {
     let currentConversation = [...initialMessages];
+    stopFlagRef.current = false;
     
     try {
-      while (true) {
+      while (!stopFlagRef.current) {
         setStatus("Thinking...");
         
         let modelParts: MessagePart[] = [];
@@ -391,7 +383,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           const reader = stream.getReader();
           const decoder = new TextDecoder();
           
-          while (true) {
+          while (!stopFlagRef.current) {
             const { done, value } = await reader.read();
             if (done) break;
             const chunk = decoder.decode(value);
@@ -426,7 +418,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           const decoder = new TextDecoder();
           let currentToolCall: any = null;
 
-          while (true) {
+          while (!stopFlagRef.current) {
             const { done, value } = await reader.read();
             if (done) break;
             const chunk = decoder.decode(value);
@@ -467,6 +459,8 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         if (currentTextId) finalizeStreamingMsg(currentTextId);
         if (currentThoughtId) finalizeStreamingMsg(currentThoughtId);
 
+        if (stopFlagRef.current) break;
+
         currentConversation.push({ role: 'model', parts: modelParts });
 
         const functionCalls = modelParts.filter(p => !!p.functionCall).map(p => p.functionCall);
@@ -474,6 +468,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         if (functionCalls.length > 0) {
           let functionResponses: MessagePart[] = [];
           for (const fc of functionCalls) {
+            if (stopFlagRef.current) break;
             const name = fc.name.includes(':') ? fc.name.split(':').pop() : fc.name;
             setStatus(`Executing ${name}...`);
             
@@ -561,7 +556,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
               result = { success: true };
             } else if (name === 'ask_user') {
               setStatus("Waiting for user...");
-              addDisplayMsg('assistant', fc.args.question, undefined, false, fc.args.options);
+              addDisplayMsg('assistant', fc.args.question);
               const userResponse = await new Promise<string>((resolve) => {
                 askUserResolverRef.current = resolve;
               });

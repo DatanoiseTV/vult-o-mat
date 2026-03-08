@@ -56,7 +56,8 @@ export class MIDIController {
       if (this.selectedInputId && input.id !== this.selectedInputId) return;
 
       input.addListener('noteon', (e: NoteMessageEvent) => {
-        const vel = (e as any).velocity || 1;
+        // WebMidi v3 velocity is 0.0-1.0, scale to 0-127 for Vult
+        const vel = Math.round(((e as any).velocity || 1) * 127);
         this.onNoteOn(e.note.number, vel);
       });
       
@@ -66,7 +67,9 @@ export class MIDIController {
       
       input.addListener('controlchange', (e: ControlChangeMessageEvent) => {
         if (typeof (e as any).value === 'number') {
-          this.onCC((e as any).controller.number, (e as any).value);
+          // WebMidi v3 value is 0.0-1.0, scale to 0-127 for Vult
+          const val = Math.round((e as any).value * 127);
+          this.onCC((e as any).controller.number, val);
         }
       });
     });
