@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, AudioWaveform, Code2, Database, History, Music, Keyboard } from 'lucide-react';
+import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, AudioWaveform, Code2, History, Music, Keyboard, Globe, Search } from 'lucide-react';
 import { AudioEngine } from './AudioEngine';
 import type { InputSource, SourceType } from './AudioEngine';
 import { MIDIController } from './MIDIController';
 import VultEditor from './VultEditor';
+import type { VultEditorHandle } from './VultEditor';
 import ScopeView from './ScopeView';
 import LLMPane from './LLMPane';
 import VirtualMIDI from './VirtualMIDI';
@@ -12,6 +13,8 @@ import MultiScopeView from './MultiScopeView';
 import Sequencer from './Sequencer';
 import type { Step } from './Sequencer';
 import { Knob } from './Knob';
+import CommunityPresets from './CommunityPresets';
+import { useCommunityPresets, loadPresetCode } from './useCommunityPresets';
 import './App.css';
 
 const PRESETS: Record<string, string> = {
@@ -386,7 +389,7 @@ and default() {
 
 const SYSTEM_PROMPT = `
 Role: Senior DSP Research Scientist and Mentor. 
-Environment: VultLab – A Professional Real-time IDE with Live Telemetry, 12 CC Knobs (30-41), and 6-voice polyphony.
+Environment: DSPLab – A Professional Real-time IDE with Live Telemetry, 12 CC Knobs (30-41), and 6-voice polyphony.
 
 STRICT VULT LANGUAGE CONSTRAINTS:
 1. DO NOT use 'and', 'or', 'not'. Use C-style '&&', '||', '!' operators ONLY.
@@ -470,6 +473,16 @@ const App: React.FC = () => {
   const [midiInputs, setMidiInputs] = useState<any[]>([]);
   const [selectedMidiInput, setSelectedMidiInput] = useState<string>('all');
 
+  const [showCommunity, setShowCommunity] = useState(false);
+  const [midiReady, setMidiReady] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportTarget, setExportTarget] = useState('c');
+  const [exportJavaPrefix, setExportJavaPrefix] = useState('com.example');
+  const [exportStatus, setExportStatus] = useState('');
+
+  // Community presets (fetched from GitHub)
+  const { groups: communityGroups, loading: communityLoading } = useCommunityPresets();
+
   // UI States
   const [labHeight, setLabHeight] = useState(250);
   const [activeLabTab, setActiveLabTab] = useState<'lab' | 'seq' | 'midi'>('lab');
@@ -477,6 +490,7 @@ const App: React.FC = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const midiControllerRef = useRef<MIDIController | null>(null);
   const skipNextUpdateRef = useRef(false);
+  const vultEditorRef = useRef<VultEditorHandle>(null);
 
   const parseVultCCs = useCallback((vultCode: string) => {
     const ccMap: Record<number, string> = {};
@@ -555,10 +569,13 @@ const App: React.FC = () => {
         (n, v) => ae.sendNoteOn(n, v),
         (n) => ae.sendNoteOff(n),
         (c, v) => ae.sendControlChange(c, v),
-        (s) => setMidiStatus(s)
+        (s) => {
+          setMidiStatus(s);
+          setMidiInputs(midiControllerRef.current?.getInputs() || []);
+        }
       );
-      await midiControllerRef.current.init();
-      setMidiInputs(midiControllerRef.current?.getInputs() || []);
+      // MIDI init is deferred — browser requires a user gesture.
+      // It is triggered by handleEnableMIDI or implicitly on first RUN press.
       ae.getDevices().then(setAudioDevices);
       ae.onRuntimeError(() => setStatus('Runtime Crash'));
     };
@@ -573,10 +590,26 @@ const App: React.FC = () => {
 
   useEffect(() => { audioEngineRef.current.setSources(inputs); }, [inputs]);
 
+  // MIDI must be initialised from a user gesture — call this on first interaction
+  const handleEnableMIDI = async () => {
+    if (!midiControllerRef.current || midiReady) return;
+    await midiControllerRef.current.init();
+    const ready = midiControllerRef.current.isInitialized();
+    setMidiReady(ready);
+    setMidiInputs(midiControllerRef.current.getInputs());
+  };
+
   const handleTogglePlay = async () => {
     const ae = audioEngineRef.current;
     if (ae.getIsPlaying()) { ae.stop(); setIsPlaying(false); }
     else {
+      // Init MIDI on first play (user gesture) if not already done
+      if (midiControllerRef.current && !midiReady) {
+        await midiControllerRef.current.init();
+        const ready = midiControllerRef.current.isInitialized();
+        setMidiReady(ready);
+        setMidiInputs(midiControllerRef.current.getInputs());
+      }
       await ae.start();
       const result = await ae.updateCode(code);
       if (result.success) { setStatus('Running'); ae.setProbes(activeProbes); setEditorMarkers([]); }
@@ -651,21 +684,45 @@ const App: React.FC = () => {
     a.click();
   };
 
-  const handleExportCPP = async () => {
-    setStatus('Generating C++...');
+  const EXPORT_OPTIONS: { value: string; label: string; ext: string; mime: string }[] = [
+    { value: 'c',        label: 'C / C++',              ext: '.cpp',  mime: 'text/x-c' },
+    { value: 'c-pd',     label: 'C / C++ (Pure Data)',  ext: '.cpp',  mime: 'text/x-c' },
+    { value: 'c-teensy', label: 'C / C++ (Teensy)',     ext: '.cpp',  mime: 'text/x-c' },
+    { value: 'js',       label: 'JavaScript',           ext: '.js',   mime: 'text/javascript' },
+    { value: 'lua',      label: 'Lua',                  ext: '.lua',  mime: 'text/x-lua' },
+    { value: 'java',     label: 'Java',                 ext: '.java', mime: 'text/x-java' },
+  ];
+
+  const handleExport = async () => {
+    const opt = EXPORT_OPTIONS.find(o => o.value === exportTarget);
+    if (!opt) return;
+    setExportStatus('Generating...');
     try {
-      const response = await fetch('/api/compile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, target: 'cpp' }) });
+      const body: Record<string, string> = { code, target: exportTarget };
+      if (exportTarget === 'java') body.javaPrefix = exportJavaPrefix;
+      const response = await fetch('/api/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
       const data = await response.json();
       if (data.code) {
-        const blob = new Blob([data.code], { type: 'text/plain' });
+        const blob = new Blob([data.code], { type: opt.mime });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${projectName.replace(/\s+/g, '_')}.cpp`;
+        a.download = `${projectName.replace(/\s+/g, '_')}${opt.ext}`;
         a.click();
-        setStatus('C++ Exported');
-      } else { setStatus('Export Failed'); }
-    } catch (e) { setStatus('Network Error'); }
+        URL.revokeObjectURL(url);
+        setExportStatus('Done');
+        setTimeout(() => { setExportStatus(''); setShowExportModal(false); }, 800);
+      } else {
+        const msg = data.errors?.[0]?.msg || 'Export failed';
+        setExportStatus('Error: ' + msg.substring(0, 80));
+      }
+    } catch (e) {
+      setExportStatus('Network error');
+    }
   };
 
   const handleLoadCode = useCallback((newCode: string) => {
@@ -765,18 +822,33 @@ const App: React.FC = () => {
   return (
     <div className="app-container">
       <div className="sidebar">
-        <div className="logo" style={{ marginBottom: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-          <Zap color="#ffcc00" size={24} />
-          <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#ffcc00', letterSpacing: '1px' }}>VULTLAB</span>
+        <div className="logo" style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+          <Zap color="#ffcc00" size={22} />
+          <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#ffcc00', letterSpacing: '1px' }}>DSPLAB</span>
         </div>
-        <div className="nav-item active" title="IDE"><Cpu size={18} /></div>
-        <div className="nav-item" title="Save" onClick={handleSave}><Save size={18} /></div>
-        <div className="nav-item" title="Download Vult" onClick={handleDownload}><Download size={18} /></div>
-        <div className="nav-item" title="Export C++" onClick={handleExportCPP}><Code2 size={18} /></div>
-        <div className={`nav-item ${showHistory ? 'active' : ''}`} title="History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); }}><History size={18} /></div>
-        <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); }}><Database size={18} /></div>
+        <div className="nav-item active" title="IDE">
+          <Cpu size={17} /><span className="nav-label">IDE</span>
+        </div>
+        <div className="nav-item" title="Save" onClick={handleSave}>
+          <Save size={17} /><span className="nav-label">Save</span>
+        </div>
+        <div className="nav-item" title="Download .vult source" onClick={handleDownload}>
+          <Download size={17} /><span className="nav-label">Source</span>
+        </div>
+        <div className={`nav-item ${showExportModal ? 'active' : ''}`} title="Export Code" onClick={() => { setShowExportModal(!showExportModal); setExportStatus(''); }}>
+          <Code2 size={17} /><span className="nav-label">Export</span>
+        </div>
+        <div className={`nav-item ${showCommunity ? 'active' : ''}`} title="Community Presets" onClick={() => { setShowCommunity(!showCommunity); setShowHistory(false); setShowInspector(false); }}>
+          <Globe size={17} /><span className="nav-label">Community</span>
+        </div>
+        <div className={`nav-item ${showHistory ? 'active' : ''}`} title="Version History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); setShowCommunity(false); }}>
+          <History size={17} /><span className="nav-label">History</span>
+        </div>
+        <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); setShowCommunity(false); }}>
+          <Search size={17} /><span className="nav-label">Monitoring</span>
+        </div>
         <div className="spacer" />
-        <div className="midi-status-circle" title={midiStatus} style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#00ff00', marginBottom: '20px' }} />
+        <div className="midi-status-circle" title={midiStatus} style={{ width: '8px', height: '8px', borderRadius: '50%', background: midiReady ? '#00ff00' : '#555', marginBottom: '20px' }} />
       </div>
 
       <div className="main-content">
@@ -787,7 +859,47 @@ const App: React.FC = () => {
             {isPlaying ? 'STOP' : 'RUN'}
           </button>
           <div className="divider" />
-          <div className="control-group"><span className="label">PRESET</span><select value="" onChange={(e) => loadPreset(e.target.value)}><option value="" disabled>Load...</option>{Object.keys(PRESETS).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+          <div className="control-group">
+            <span className="label">PRESET</span>
+            <select value="" onChange={async (e) => {
+              const val = e.target.value;
+              if (!val) return;
+              if (val.startsWith('community:')) {
+                const path = val.slice('community:'.length);
+                try {
+                  const code = await loadPresetCode(path);
+                  const name = path.split('/').pop()?.replace(/\.vult$/, '').replace(/[_-]/g, ' ') ?? 'preset';
+                  handleLoadCode(code);
+                  setProjectName(name);
+                } catch { setStatus('Load Error'); }
+              } else {
+                loadPreset(val);
+              }
+            }}>
+              <option value="" disabled>Load...</option>
+              <optgroup label="Built-in">
+                {Object.keys(PRESETS).map(p => <option key={p} value={p}>{p}</option>)}
+              </optgroup>
+              {communityGroups.length > 0 && communityGroups.map(group => {
+                const byRole: Record<string, typeof group.presets> = {};
+                for (const p of group.presets) {
+                  const r = p.meta?.role ?? 'effect';
+                  if (!byRole[r]) byRole[r] = [];
+                  byRole[r].push(p);
+                }
+                const roleOrder = ['instrument', 'effect', 'utility'] as const;
+                const rolesPresent = roleOrder.filter(r => byRole[r]?.length);
+                return rolesPresent.map(role => (
+                  <optgroup key={`${group.author}-${role}`} label={`Community / ${group.author} — ${role[0].toUpperCase() + role.slice(1)}s`}>
+                    {byRole[role].map(p => (
+                      <option key={p.path} value={`community:${p.path}`}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                ));
+              })}
+              {communityLoading && <optgroup label="Community"><option disabled>Loading...</option></optgroup>}
+            </select>
+          </div>
           <div className="control-group"><span className="label">MIDI</span><select value={selectedMidiInput} onChange={(e) => { setSelectedMidiInput(e.target.value); midiControllerRef.current?.setInput(e.target.value === 'all' ? null : e.target.value); }}><option value="all">All</option>{midiInputs.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
           <div className="control-group">
             <span className="label">SAVED</span>
@@ -807,7 +919,7 @@ const App: React.FC = () => {
         <div className="editor-layout">
           <div className="editor-container">
             <div className="editor-wrapper" style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              <VultEditor code={code} onChange={handleCodeChange} markers={editorMarkers} onStateUpdate={(cb) => audioEngineRef.current.onStateUpdate(cb)} diffMode={diffMode} originalCode={originalCode} />
+              <VultEditor ref={vultEditorRef} code={code} onChange={handleCodeChange} markers={editorMarkers} onStateUpdate={(cb) => audioEngineRef.current.onStateUpdate(cb)} diffMode={diffMode} originalCode={originalCode} />
               {diffMode && (
                 <div style={{ position: 'absolute', bottom: '20px', right: '20px', display: 'flex', gap: '10px', zIndex: 100 }}>
                   <button onClick={handleRejectDiff} style={{ background: '#444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>REJECT</button>
@@ -900,6 +1012,19 @@ const App: React.FC = () => {
                 )}
                 {activeLabTab === 'midi' && (
                   <div className="virtual-midi-panel" style={{ height: '100%', overflowY: 'auto' }}>
+                    {!midiReady && (
+                      <div style={{ padding: '12px 14px', borderBottom: '1px solid #222', display: 'flex', alignItems: 'center', gap: '10px', background: '#151515' }}>
+                        <div style={{ flex: 1, fontSize: '11px', color: '#888' }}>
+                          {midiStatus.startsWith('MIDI:') ? midiStatus : 'MIDI not yet enabled — browser requires a click first.'}
+                        </div>
+                        <button
+                          onClick={handleEnableMIDI}
+                          style={{ background: '#ffcc00', color: '#000', border: 'none', borderRadius: '3px', padding: '5px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0 }}
+                        >
+                          Enable MIDI
+                        </button>
+                      </div>
+                    )}
                     <VirtualMIDI 
                       onCC={(cc, val) => audioEngineRef.current.sendControlChange(cc, val, 0)} 
                       onNoteOn={(note, vel) => audioEngineRef.current.sendNoteOn(note, vel, 0)} 
@@ -935,6 +1060,18 @@ const App: React.FC = () => {
                     ))}
                   </div>
                 </div>
+              ) : showCommunity ? (
+                <CommunityPresets
+                  onLoad={(code, name) => {
+                    handleLoadCode(code);
+                    setProjectName(name);
+                    setShowCommunity(false);
+                  }}
+                  onInsert={(code) => {
+                    vultEditorRef.current?.insertAtCursor(code);
+                    setShowCommunity(false);
+                  }}
+                />
               ) : showInspector ? (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                   <div style={{ flex: 1, minHeight: 0 }}>
@@ -954,6 +1091,88 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showExportModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
+          <div style={{
+            background: '#1a1a1a', border: '1px solid #333', borderRadius: '6px',
+            padding: '24px', width: '340px', display: 'flex', flexDirection: 'column', gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ color: '#ffcc00', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Export Code</span>
+              <span style={{ color: '#555', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }} onClick={() => setShowExportModal(false)}>×</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Target Language</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {EXPORT_OPTIONS.map(opt => (
+                  <label key={opt.value} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px',
+                    borderRadius: '4px', cursor: 'pointer',
+                    background: exportTarget === opt.value ? '#252525' : 'transparent',
+                    border: `1px solid ${exportTarget === opt.value ? '#444' : 'transparent'}`,
+                  }}>
+                    <input
+                      type="radio"
+                      name="exportTarget"
+                      value={opt.value}
+                      checked={exportTarget === opt.value}
+                      onChange={() => setExportTarget(opt.value)}
+                      style={{ accentColor: '#ffcc00' }}
+                    />
+                    <span style={{ color: exportTarget === opt.value ? '#e0e0e0' : '#888', fontSize: '13px' }}>{opt.label}</span>
+                    <span style={{ marginLeft: 'auto', color: '#444', fontSize: '11px', fontFamily: 'monospace' }}>{opt.ext}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {exportTarget === 'java' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Java Package Prefix</label>
+                <input
+                  type="text"
+                  value={exportJavaPrefix}
+                  onChange={e => setExportJavaPrefix(e.target.value)}
+                  placeholder="com.example"
+                  style={{
+                    background: '#111', border: '1px solid #333', borderRadius: '4px',
+                    color: '#e0e0e0', padding: '7px 10px', fontSize: '13px', fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+            )}
+
+            {exportStatus && (
+              <div style={{
+                padding: '8px 10px', borderRadius: '4px', fontSize: '12px',
+                background: exportStatus.startsWith('Error') ? '#2a1515' : '#151a15',
+                color: exportStatus.startsWith('Error') ? '#ff6666' : '#66cc66',
+                border: `1px solid ${exportStatus.startsWith('Error') ? '#5a2020' : '#205a20'}`,
+                wordBreak: 'break-word'
+              }}>{exportStatus}</div>
+            )}
+
+            <button
+              onClick={handleExport}
+              disabled={exportStatus === 'Generating...'}
+              style={{
+                background: '#ffcc00', color: '#000', border: 'none', borderRadius: '4px',
+                padding: '9px 0', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px',
+                textTransform: 'uppercase', cursor: exportStatus === 'Generating...' ? 'not-allowed' : 'pointer',
+                opacity: exportStatus === 'Generating...' ? 0.6 : 1
+              }}
+            >
+              {exportStatus === 'Generating...' ? 'Generating...' : 'Export'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

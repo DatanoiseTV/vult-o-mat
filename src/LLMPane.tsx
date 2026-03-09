@@ -1,5 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+
+export interface LLMPaneHandle {
+  /** Programmatically send a message to the agent, as if the user typed it. */
+  sendMessage: (text: string) => void;
+}
 
 interface LLMPaneProps {
   currentCode: string;
@@ -33,11 +38,11 @@ type MessagePart = {
 };
 type Message = { role: 'user' | 'model', parts: MessagePart[] };
 
-const LLMPane: React.FC<LLMPaneProps> = ({ 
+const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({ 
   currentCode, onUpdateCode, onSetKnob, onTriggerGenerator, 
   onConfigureInput, onLoadPreset, onSaveSnapshot, onSetProbes, onConfigureSequencer, 
   getPresets, getSequencerState, getTelemetry, getTelemetryHistory, getSpectrum, getPeakFrequencies, getHarmonics, getSignalQuality, getAudioMetrics, systemPrompt 
-}) => {
+}, llmRef) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInspirationLoading, setIsInspirationLoading] = useState(false);
@@ -71,6 +76,30 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const askUserResolverRef = useRef<((val: string) => void) | null>(null);
   const stopFlagRef = useRef(false);
+
+  // Expose sendMessage so parent can trigger agent programmatically
+  // (e.g. from Monaco editor right-click actions)
+  useImperativeHandle(llmRef, () => ({
+    sendMessage(text: string) {
+      if (isLoading) return;
+      setInput('');
+      setIsLoading(true);
+      addDisplayMsg('user', text);
+      if (provider === 'gemini' && !apiKey) {
+        addDisplayMsg('assistant', "API key missing. Open Settings to add your key.");
+        setIsLoading(false);
+        return;
+      }
+      const newMsg: Message = { role: 'user', parts: [{ text }] };
+      // messages state may be stale here — use functional ref pattern
+      setMessages(prev => {
+        const updated = [...prev, newMsg];
+        // kick off agent loop after state settles
+        setTimeout(() => processAgentLoop(updated), 0);
+        return updated;
+      });
+    },
+  }));
 
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
@@ -1348,7 +1377,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
     if (messages.length === 0 && !isLoading && !isInspirationLoading) {
       const savedMsgs = localStorage.getItem('llm_messages');
       if (!savedMsgs || JSON.parse(savedMsgs).length === 0) {
-        addDisplayMsg('assistant', "Welcome to VultLab. I am your Senior DSP Assistant. Would you like to start with a professional preset or a minimal template?", undefined, false, [
+        addDisplayMsg('assistant', "Welcome to DSPLab. I am your Senior DSP Assistant. Would you like to start with a professional preset or a minimal template?", undefined, false, [
           { label: "Load CS-80 (vs80)", value: "load_preset:vs80" },
           { label: "Biquad Filter", value: "load_preset:Biquad Filter" },
           { label: "Minimal Template", value: "load_preset:Minimal" }
@@ -1458,7 +1487,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Activity size={14} color={isLoading ? "#ff0000" : "#666"} className={isLoading ? "animate-spin" : ""} />
-            <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>Vult Agent</span>
+            <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>DSP Agent</span>
           </div>
           <div style={{ fontSize: '10px', color: '#00ff00', marginTop: '2px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 5px rgba(0,255,0,0.3)' }}>
             TOKENS: {tokens.total.toLocaleString()} {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'} (${formatTime(elapsedTurn)})`} | SESSION: {formatTime(elapsedSession)}
@@ -1571,7 +1600,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
           value={input} 
           onChange={(e) => setInput(e.target.value)} 
           onKeyDown={(e) => e.key === 'Enter' && (isLoading ? handleStop() : handleSend())} 
-          placeholder={askUserResolverRef.current ? "Type your answer..." : "Ask the Vult Agent..."} 
+          placeholder={askUserResolverRef.current ? "Type your answer..." : "Ask the DSP Agent..."} 
           style={{ 
             flex: 1, 
             background: '#252526', 
@@ -1605,6 +1634,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       </div>
     </div>
   );
-};
+});
 
+LLMPane.displayName = 'LLMPane';
 export default LLMPane;
