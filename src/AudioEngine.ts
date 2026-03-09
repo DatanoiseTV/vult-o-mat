@@ -123,10 +123,19 @@ export class AudioEngine {
   private async buildContext() {
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-    // If the device disappears mid-session, tear down so the next RUN rebuilds cleanly
+    // Handle state changes after the context is fully built.
+    // 'interrupted' (iOS/macOS) is recoverable — resume it.
+    // 'closed' is terminal — flag for rebuild on next start().
     this.audioContext.onstatechange = () => {
-      if (this.audioContext?.state === 'closed' || this.audioContext?.state === ('interrupted' as any)) {
-        this.destroyContext();
+      const state = this.audioContext?.state as string;
+      if (state === 'interrupted') {
+        // macOS/iOS audio device briefly interrupted — try to resume
+        this.audioContext?.resume().catch(() => {});
+      } else if (state === 'closed') {
+        // Context was closed externally — will be rebuilt on next start()
+        this.workletNode = null;
+        this.analyser = null;
+        this.audioContext = null;
         this.isPlaying = false;
       }
     };
@@ -142,7 +151,7 @@ export class AudioEngine {
     this.analyser.fftSize = 2048;
 
     this.workletNode = new AudioWorkletNode(this.audioContext, 'vult-processor', {
-      numberOfInputs: 1,
+      numberOfInputs: 0,   // inputs are generated inside the worklet, not from Web Audio graph
       numberOfOutputs: 1,
       outputChannelCount: [2],
     });
@@ -173,17 +182,29 @@ export class AudioEngine {
   }
 
   public async start() {
-    // If context exists but is in an unrecoverable state, tear it down first
-    if (this.audioContext && (this.audioContext.state === 'closed' || this.audioContext.state === ('interrupted' as any))) {
+    // If context is in an unrecoverable state, tear it down first
+    if (this.audioContext && this.audioContext.state === 'closed') {
       await this.destroyContext();
     }
 
     if (!this.audioContext) {
-      await this.buildContext();
+      try {
+        await this.buildContext();
+      } catch (e) {
+        // First attempt failed — wait briefly and retry once.
+        // macOS sometimes rejects the first AudioContext creation when the
+        // system audio device is switching (e.g. Bluetooth connect).
+        await new Promise(r => setTimeout(r, 300));
+        await this.destroyContext();
+        await this.buildContext();
+      }
     }
 
-    if (this.audioContext!.state === 'suspended') {
-      await this.audioContext!.resume();
+    const ctx = this.audioContext!;
+
+    // Resume if suspended — also handles 'interrupted' on macOS/iOS
+    if (ctx.state === 'suspended' || (ctx.state as string) === 'interrupted') {
+      await ctx.resume();
     }
 
     this.isPlaying = true;

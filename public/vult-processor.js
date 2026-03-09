@@ -232,7 +232,8 @@ class VultProcessor extends AudioWorkletProcessor {
       return true;
     }
 
-    const liveInput = inputs[0] && inputs[0][0] ? inputs[0][0] : null;
+    // inputs is empty (numberOfInputs: 0) — live audio is handled via getUserMedia separately
+    const liveInput = (inputs && inputs[0] && inputs[0][0]) ? inputs[0][0] : null;
     const numSamples = outputL.length;
     const numInputs = this.sources.length;
 
