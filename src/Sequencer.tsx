@@ -374,7 +374,7 @@ const Sequencer: React.FC<SequencerProps> = ({
           
           <div style={{ display: 'flex', gap: '4px' }}>
             {/* Note Names Column */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '24px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '50px', flexShrink: 0, alignItems: 'flex-end', paddingRight: '8px', boxSizing: 'border-box' }}>
                {GRID_NOTES.map(noteIdx => {
                   const isBlackKey = [1, 3, 6, 8, 10].includes(noteIdx);
                   return (
@@ -392,7 +392,7 @@ const Sequencer: React.FC<SequencerProps> = ({
               const stepOctave = Math.floor(step.note / 12) - 1;
 
               return (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '28px', flexShrink: 0, paddingLeft: '2px', paddingRight: '2px', background: i === currentStep ? 'rgba(126, 200, 255, 0.05)' : 'transparent', borderRadius: '2px', opacity: isActiveStep ? 1 : 0.3, pointerEvents: isActiveStep ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '28px', flexShrink: 0, background: i === currentStep ? 'rgba(126, 200, 255, 0.05)' : 'transparent', borderRadius: '2px', opacity: isActiveStep ? 1 : 0.3, pointerEvents: isActiveStep ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
                   {GRID_NOTES.map(noteIdx => {
                     const isMatch = stepNoteIdx === noteIdx;
                     const isActive = isMatch && step.active;
@@ -440,14 +440,14 @@ const Sequencer: React.FC<SequencerProps> = ({
       ) : (
         <div className="drum-grid" style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginTop: '4px' }}>
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <div style={{ width: '50px' }} /> {/* Label spacer */}
+              <div style={{ width: '50px', flexShrink: 0 }} /> {/* Label spacer */}
               {Array.from({length: 32}).map((_, i) => (
                 <div key={i} style={{ width: '28px', fontSize: '9px', fontWeight: 'bold', color: i === currentStep ? '#7ec8ff' : '#555', textAlign: 'center', opacity: i < length ? 1 : 0.3, transition: 'opacity 0.2s' }}>{i + 1}</div>
               ))}
            </div>
            {drumTracks.map((track, tIdx) => (
              <div key={tIdx} style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '2px 0' }}>
-               <div style={{ width: '40px', fontSize: '10px', fontWeight: 'bold', color: '#ffcc00', textAlign: 'right', paddingRight: '10px' }}>{track.name}</div>
+               <div style={{ width: '50px', flexShrink: 0, fontSize: '10px', fontWeight: 'bold', color: '#ffcc00', textAlign: 'right', paddingRight: '10px', boxSizing: 'border-box' }}>{track.name}</div>
                {track.steps.map((st: any, i: number) => (
                  <div key={i} onClick={() => updateDrumStep(tIdx, i, !st.active)} style={{
                    width: '28px', height: '24px', background: st.active ? '#ff3366' : (Math.floor(i/4)%2 === 0 ? '#111' : '#161b22'),
