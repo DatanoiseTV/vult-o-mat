@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, Sparkles, Minimize2, Maximize2 } from 'lucide-react';
 
 export interface LLMPaneHandle {
   /** Programmatically send a message to the agent, as if the user typed it. */
@@ -43,6 +43,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
   onConfigureInput, onLoadPreset, onSaveSnapshot, onSetProbes, onConfigureSequencer, 
   getPresets, getSequencerState, getTelemetry, getTelemetryHistory, getSpectrum, getPeakFrequencies, getHarmonics, getSignalQuality, getAudioMetrics, systemPrompt 
 }, llmRef) => {
+  const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInspirationLoading, setIsInspirationLoading] = useState(false);
@@ -69,6 +70,61 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [elapsedTurn, setElapsedTurn] = useState(0);
   const [elapsedSession, setElapsedSession] = useState(0);
+  
+  const [widgetState, setWidgetState] = useState(() => ({
+    width: 360,
+    height: 550,
+    x: typeof window !== 'undefined' ? window.innerWidth - 380 : 0,
+    y: typeof window !== 'undefined' ? window.innerHeight - 570 : 0
+  }));
+
+  const handleDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    const startX = e.clientX - widgetState.x;
+    const startY = e.clientY - widgetState.y;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setWidgetState(prev => ({ 
+        ...prev, 
+        x: Math.max(0, Math.min(window.innerWidth - prev.width, moveEvent.clientX - startX)), 
+        y: Math.max(0, Math.min(window.innerHeight - prev.height, moveEvent.clientY - startY)) 
+      }));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleResizeStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = widgetState.width;
+    const startHeight = widgetState.height;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setWidgetState(prev => ({
+        ...prev,
+        width: Math.max(300, startWidth + (moveEvent.clientX - startX)),
+        height: Math.max(300, startHeight + (moveEvent.clientY - startY))
+      }));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef(currentCode);
@@ -474,8 +530,13 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
       },
       {
         name: "get_audio_metrics",
-        description: "Retrieves real-time audio metrics: Peak Level, RMS, Clipping Count, and Headroom (dB). Use this to check if the output is clipping or distorted.",
-        parameters: { type: "OBJECT", properties: {} }
+        description: "Retrieves real-time audio metrics: Peak Level, RMS, Clipping Count, and Headroom (dB). It will wait the specified duration (in milliseconds) before taking the measurement, allowing audio to process.",
+        parameters: { 
+          type: "OBJECT", 
+          properties: {
+            wait_ms: { type: "NUMBER", description: "Time to wait in milliseconds before measuring (e.g., 500 or 1000). Default is 500." }
+          } 
+        }
       },
       {
         name: "ask_user",
@@ -1230,7 +1291,9 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
               addDisplayMsg('system', `[RESEARCH] Measuring signal quality`);
               result = { quality: getSignalQuality() };
             } else if (name === 'get_audio_metrics') {
-              addDisplayMsg('system', `[RESEARCH] Measuring output signal quality (RMS/Peak/Headroom)`);
+              const waitMs = fc.args.wait_ms || 500;
+              addDisplayMsg('system', `[RESEARCH] Measuring output signal quality (RMS/Peak/Headroom) for ${waitMs}ms...`);
+              await new Promise(r => setTimeout(r, waitMs));
               result = { metrics: getAudioMetrics() };
             } else if (name === 'user_message' || name === 'tell') {
               addDisplayMsg('assistant', fc.args.message);
@@ -1255,15 +1318,22 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
               addDisplayMsg('system', `[RESEARCH] Consulting Vult technical reference`);
               result = {
                 vult_syntax_guide: {
-                  types: "real, int, bool, array(type, size)",
+                  overview: "Vult is a transcompiler language for high-performance DSP. Functions are processing units that can maintain state. Calling a stateful function creates a unique instance of its state.",
+                  types: "real (float/fixed), int, bool, fix16, array(type, size)",
                   declarations: {
-                    mem: "Persistent state: 'mem x = 0.0;' or 'mem x: real;'",
-                    val: "Local immutable: 'val x = 1.0;'",
+                    mem: "Persistent state across calls. Define ONLY inside functions, NOT globally: 'mem x = 0.0;' or 'mem x: real;'",
+                    val: "Local immutable constant: 'val x = 1.0;'",
+                    var: "Local mutable variable: 'var x = 0.0;'",
                     fun: "Function: 'fun name(a: real) : real { return a; }'",
                     and: "Parallel defs: 'and noteOn(...) { ... }'",
                     external: "External: 'external abs(x: real) : real @[built-in]'"
                   },
-                  logic: "if (cond) { ... } else { ... } (Parens required, braces preferred)",
+                  control_flow: {
+                    if_statement: "if (cond) { a = b; } else { c = d; } (Parens required, braces preferred)",
+                    if_expression: "val x = if cond then A else B; (MUST use 'then', no braces allowed)",
+                    tuple_assignment: "Multiple return/swap: 'w2, w1 = w1, w0;'",
+                  },
+                  statement_rules: "CRITICAL: All statements MUST be assignments ('a = b;') or explicit discards of function calls ('_ = func();'). You CANNOT write standalone function calls like 'func();'. You CANNOT write standalone expressions (e.g., '1.0;'). They will cause an 'Invalid statement' compile error.",
                   operators: {
                     arithmetic: "+, -, *, /, %",
                     comparison: "==, !=, <, >, <=, >= (C-style)",
@@ -1279,6 +1349,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
                   casting: "real(int_val), int(real_val)",
                   meta: {
                     tables: "fun f(x) : real @[table(size=128, min=0.0, max=1.0)] { ... }",
+                    waves: "@[wave] for embedding wav files",
                     not_defined: "Do not use 'and', 'or', 'not' as keywords for logic."
                   }
                 },
@@ -1481,31 +1552,61 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
     }
   };
 
+  if (isMinimized) {
+    return (
+      <div 
+        style={{ 
+          position: 'fixed', bottom: '20px', right: '20px', 
+          background: 'rgba(26, 26, 26, 0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255, 255, 255, 0.1)', 
+          borderRadius: '24px', padding: '10px 20px', 
+          display: 'flex', alignItems: 'center', gap: '10px', 
+          cursor: 'pointer', zIndex: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          transition: 'all 0.2s ease-in-out'
+        }}
+        onClick={() => setIsMinimized(false)}
+        title="Restore DSP Agent"
+      >
+        <Maximize2 size={14} color="#888" />
+        <Activity size={16} color={isLoading ? "#ff0000" : "#00ff00"} className={isLoading ? "animate-spin" : ""} />
+        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{status || "DSP Agent"}</span>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid #333', background: '#1e1e1e' }}>
-      <div style={{ padding: '12px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1a1a1a' }}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Activity size={14} color={isLoading ? "#ff0000" : "#666"} className={isLoading ? "animate-spin" : ""} />
-            <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>DSP Agent</span>
-          </div>
-          <div style={{ fontSize: '10px', color: '#00ff00', marginTop: '2px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 5px rgba(0,255,0,0.3)' }}>
-            TOKENS: {tokens.total.toLocaleString()} {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'} (${formatTime(elapsedTurn)})`} | SESSION: {formatTime(elapsedSession)}
+    <div style={{ position: 'fixed', top: `${widgetState.y}px`, left: `${widgetState.x}px`, width: `${widgetState.width}px`, height: `${widgetState.height}px`, display: 'flex', flexDirection: 'column', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', background: 'rgba(30,30,30,0.85)', backdropFilter: 'blur(12px)', zIndex: 9999, boxShadow: '0 12px 40px rgba(0,0,0,0.6)', overflow: 'hidden' }}>
+      <div 
+        onMouseDown={handleDragStart}
+        style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', cursor: 'grab' }}
+      >
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button onClick={() => setIsMinimized(true)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }} title="Minimize">
+            <ChevronDown size={20} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Activity size={14} color={isLoading ? "#ff0000" : "#666"} className={isLoading ? "animate-spin" : ""} />
+              <span style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '1px' }}>DSP Agent</span>
+            </div>
+            <div style={{ fontSize: '10px', color: '#00ff00', marginTop: '2px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 5px rgba(0,255,0,0.3)' }}>
+              TOKENS: {tokens.total.toLocaleString()} {currentTurn > 0 && `| TURN: ${currentTurn}/${provider === 'gemini' ? '50' : '30'} (${formatTime(elapsedTurn)})`} | SESSION: {formatTime(elapsedSession)}
+            </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button 
             onClick={handleFeelCurious} 
             disabled={isLoading || isInspirationLoading}
-            style={{ background: 'transparent', border: 'none', color: '#ffcc00', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+            style={{ background: 'transparent', border: 'none', color: '#ffcc00', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
             title="I Feel Curious (Get Inspiration)"
           >
             <Sparkles size={16} />
           </button>
-          <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', border: 'none', color: (provider === 'gemini' && apiKey) || provider === 'openai' ? '#00ff00' : '#888', cursor: 'pointer' }}>
+          <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', border: 'none', color: (provider === 'gemini' && apiKey) || provider === 'openai' ? '#00ff00' : '#888', cursor: 'pointer', padding: 0 }} title="Settings">
             <Settings size={16} />
           </button>
-        </div>      </div>
+        </div>
+      </div>
       
       {showSettings && (
         <div style={{ padding: '12px', background: '#252526', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1542,43 +1643,47 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
       <div style={{ height: '4px', width: '100%', background: '#000', position: 'relative', overflow: 'hidden', borderBottom: '1px solid #333' }}>
         {(isLoading || isInspirationLoading) && <div className="agent-scanner" />}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px', scrollBehavior: 'smooth' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '16px', scrollBehavior: 'smooth' }}>
         {displayMessages.map((m) => (
           <div key={m.id} style={{ 
-            alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+            alignSelf: m.role === 'user' ? 'flex-end' : (m.role === 'system' || m.role === 'thought' ? 'center' : 'flex-start'),
             width: m.role === 'system' || m.role === 'thought' ? '100%' : 'auto',
-            background: m.role === 'user' ? '#007acc' : (m.role === 'assistant' ? '#2d2d2d' : 'transparent'),
-            borderLeft: m.role === 'system' ? '2px solid #444' : (m.role === 'thought' ? '2px solid #333' : 'none'),
-            color: m.role === 'system' ? '#888' : (m.role === 'thought' ? '#555' : '#fff'),
-            padding: m.role === 'system' || m.role === 'thought' ? '4px 12px' : '10px 14px',
-            borderRadius: '12px',
+            background: m.role === 'user' ? 'rgba(0, 122, 204, 0.4)' : (m.role === 'assistant' ? 'rgba(255, 255, 255, 0.05)' : (m.role === 'system' ? 'rgba(0,0,0,0.3)' : 'transparent')),
+            borderLeft: m.role === 'system' ? '2px solid rgba(255,204,0,0.5)' : (m.role === 'thought' ? '2px solid rgba(255,255,255,0.1)' : 'none'),
+            color: m.role === 'system' ? '#aaa' : (m.role === 'thought' ? '#777' : '#fff'),
+            padding: m.role === 'system' || m.role === 'thought' ? '6px 12px' : '10px 14px',
+            borderRadius: m.role === 'system' || m.role === 'thought' ? '6px' : '16px',
             maxWidth: m.role === 'system' || m.role === 'thought' ? '100%' : '85%',
             fontSize: m.role === 'system' || m.role === 'thought' ? '11px' : '13px',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             fontFamily: m.role === 'system' || m.role === 'thought' ? 'monospace' : 'inherit',
-            boxShadow: m.role === 'system' || m.role === 'thought' ? 'none' : '0 2px 8px rgba(0,0,0,0.2)',
-            position: 'relative'
+            boxShadow: m.role === 'system' || m.role === 'thought' ? 'none' : '0 4px 12px rgba(0,0,0,0.2)',
+            position: 'relative',
+            backdropFilter: m.role === 'user' || m.role === 'assistant' ? 'blur(8px)' : 'none',
+            border: m.role === 'user' || m.role === 'assistant' ? '1px solid rgba(255,255,255,0.1)' : (m.role === 'system' ? '1px solid rgba(0,0,0,0.5)' : 'none')
           }}>
             {m.role === 'thought' ? (
               <div style={{ opacity: m.isStreaming ? 1 : 0.7 }}>
-                <div onClick={() => toggleThought(m.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none', color: m.isStreaming ? '#ff4444' : '#555' }}>
+                <div onClick={() => toggleThought(m.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none', color: m.isStreaming ? '#ff4444' : '#666' }}>
                   {(expandedThoughts.has(m.id) || m.isStreaming) ? <ChevronDown size={10} /> : <ChevronRight size={10} />} 
-                  <span style={{ fontSize: '9px', fontWeight: 'bold' }}>REASONING {m.isStreaming && "(SCANNING...)"}</span>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', letterSpacing: '0.5px' }}>REASONING {m.isStreaming && "(SCANNING...)"}</span>
                 </div>
                 {(expandedThoughts.has(m.id) || m.isStreaming) && (
-                  <div style={{ marginTop: '4px', borderTop: '1px solid #222', paddingTop: '4px', color: '#666', fontStyle: 'italic' }}>{m.content}</div>
+                  <div style={{ marginTop: '6px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '6px', color: '#888', fontStyle: 'italic', fontSize: '10px' }}>{m.content}</div>
                 )}
               </div>
             ) : (              <>
-                <div style={{ position: 'absolute', top: '-14px', left: m.role === 'user' ? 'auto' : '4px', right: m.role === 'user' ? '4px' : 'auto', fontSize: '8px', color: '#555', fontWeight: 'bold' }}>
-                  {m.role === 'user' ? 'YOU' : (m.role === 'assistant' ? 'VULT AGENT' : '')}
-                </div>
-                {m.content}
+                {(m.role === 'user' || m.role === 'assistant') && (
+                  <div style={{ marginBottom: '4px', fontSize: '9px', color: m.role === 'user' ? '#88d' : '#888', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {m.role === 'user' ? 'You' : 'DSP Agent'}
+                  </div>
+                )}
+                <div style={{ lineHeight: '1.4' }}>{m.content}</div>
                 {m.choices && (
-                  <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {m.choices.map(c => (
-                      <button key={c.value} onClick={() => handleChoice(c.value)} style={{ background: '#333', border: '1px solid #444', color: '#ffcc00', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>{c.label}</button>
+                      <button key={c.value} onClick={() => handleChoice(c.value)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#ffcc00', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s', fontWeight: 'bold' }}>{c.label}</button>
                     ))}
                   </div>
                 )}
@@ -1594,7 +1699,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
         <div ref={messagesEndRef} />
       </div>
 
-      <div style={{ padding: '12px', borderTop: '1px solid #333', display: 'flex', gap: '8px', background: '#1a1a1a' }}>
+      <div style={{ padding: '12px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '8px', background: 'rgba(0,0,0,0.2)' }}>
         <input 
           type="text" 
           value={input} 
@@ -1603,34 +1708,49 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
           placeholder={askUserResolverRef.current ? "Type your answer..." : "Ask the DSP Agent..."} 
           style={{ 
             flex: 1, 
-            background: '#252526', 
-            border: '1px solid #444', 
+            background: 'rgba(0,0,0,0.3)', 
+            border: '1px solid rgba(255,255,255,0.1)', 
             borderRadius: '20px', 
             padding: '8px 16px', 
             color: '#fff', 
             fontSize: '13px', 
-            outline: 'none' 
-          }} 
+            outline: 'none',
+            transition: 'border-color 0.2s'
+          }}
+          onFocus={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.3)'}
+          onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
         />
         <button 
           onClick={isLoading ? handleStop : handleSend} 
           disabled={!isLoading && !input.trim()} 
           style={{ 
-            background: isLoading ? '#ff4444' : (!input.trim() ? '#333' : '#007acc'), 
-            border: 'none', 
+            background: isLoading ? 'rgba(255,68,68,0.2)' : (!input.trim() ? 'rgba(255,255,255,0.05)' : 'rgba(0,122,204,0.6)'), 
+            border: isLoading ? '1px solid rgba(255,68,68,0.4)' : '1px solid rgba(255,255,255,0.1)', 
             borderRadius: '50%', 
             width: '36px', 
             height: '36px', 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
-            cursor: 'pointer', 
-            color: '#fff', 
-            transition: 'all 0.2s' 
+            cursor: (!isLoading && !input.trim()) ? 'not-allowed' : 'pointer', 
+            color: isLoading ? '#ff4444' : (!input.trim() ? '#666' : '#fff'), 
+            transition: 'all 0.2s',
+            backdropFilter: 'blur(4px)'
           }}
         >
           {isLoading ? <StopCircle size={18} /> : <Send size={18} />}
         </button>
+      </div>
+
+      <div 
+        onMouseDown={handleResizeStart}
+        style={{
+          position: 'absolute', bottom: 0, right: 0, width: '20px', height: '20px', cursor: 'se-resize', zIndex: 10000
+        }}
+      >
+        <svg viewBox="0 0 10 10" width="10" height="10" style={{ position: 'absolute', bottom: '4px', right: '4px', opacity: 0.5 }}>
+          <path d="M 8 10 L 10 8 M 5 10 L 10 5 M 2 10 L 10 2" stroke="#fff" strokeWidth="1" fill="none" />
+        </svg>
       </div>
     </div>
   );

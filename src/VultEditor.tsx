@@ -228,11 +228,38 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
     });
   };
 
+  // Synchronize external code changes (from presets, LLM, etc.) while keeping the editor uncontrolled for user typing
+  useEffect(() => {
+    if (editorRef.current && code !== lastCodeRef.current) {
+      const editorValue = editorRef.current.getValue();
+      if (code !== editorValue) {
+        // External change detected, update editor and preserve state
+        const model = editorRef.current.getModel();
+        if (model) {
+          editorRef.current.pushUndoStop();
+          editorRef.current.executeEdits('external-update', [{
+            range: model.getFullModelRange(),
+            text: code,
+          }]);
+          editorRef.current.pushUndoStop();
+        } else {
+          editorRef.current.setValue(code);
+        }
+        lastCodeRef.current = code;
+      }
+    }
+  }, [code]);
+
   const handleEditorDidMount = (editor: any, monaco: Monaco) => {
     monacoRef.current = monaco;
     editorRef.current = editor;
     setupMonaco(monaco);
     registerActions(editor, monaco);
+
+    // Initial value
+    if (editor.getValue() !== code) {
+      editor.setValue(code);
+    }
 
     editor.onMouseMove((e: any) => {
       if (diffMode) return;
@@ -306,7 +333,6 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
         <Editor
           height="100%"
           defaultLanguage="vult"
-          value={code}
           theme="vs-dark"
           onChange={handleOnChange}
           onMount={handleEditorDidMount}

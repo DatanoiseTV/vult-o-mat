@@ -1188,7 +1188,7 @@ const App: React.FC = () => {
                     setShowCommunity(false);
                   }}
                 />
-              ) : showInspector ? (
+              ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                   <div style={{ flex: 1, minHeight: 0 }}>
                     <StateInspector onStateUpdate={(cb) => audioEngineRef.current.onStateUpdate(cb)} onProbe={toggleProbe} onSetState={(path, val) => audioEngineRef.current.setState(path, val)} activeProbes={activeProbes} />
@@ -1200,13 +1200,13 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-              ) : (
-                <LLMPane currentCode={code} onUpdateCode={handleAgentUpdateCode} onSetKnob={(cc, val) => audioEngineRef.current.sendControlChange(cc, val, 0)} onTriggerGenerator={(idx) => audioEngineRef.current.triggerGenerator(idx)} onConfigureInput={(idx, config) => updateInput(idx, config)} onLoadPreset={(name) => loadPreset(name)} onSaveSnapshot={(msg) => saveSnapshot(msg)} onSetProbes={(probes) => { setActiveProbes(probes); audioEngineRef.current.setProbes(probes); }} onConfigureSequencer={(bpm, steps, playing) => { if (bpm !== undefined) setSeqBpm(bpm); if (steps !== undefined) setSeqSteps(steps); if (playing !== undefined) setSeqPlaying(playing); }} getPresets={() => Object.keys(PRESETS)} getSequencerState={() => ({ bpm: seqBpm, steps: seqSteps, playing: seqPlaying })} getTelemetry={() => audioEngineRef.current.getLiveState()} getTelemetryHistory={() => audioEngineRef.current.getTelemetryHistory()} getSpectrum={() => Array.from(audioEngineRef.current.getSpectrumData())} getPeakFrequencies={(count) => audioEngineRef.current.getPeakFrequencies(count)} getHarmonics={() => audioEngineRef.current.getHarmonics()} getSignalQuality={() => audioEngineRef.current.getSignalQualityMetrics()} getAudioMetrics={() => audioEngineRef.current.getAudioMetrics()} systemPrompt={SYSTEM_PROMPT} />
               )}
             </div>
           </div>
         </div>
       </div>
+
+      <LLMPane currentCode={code} onUpdateCode={handleAgentUpdateCode} onSetKnob={(cc, val) => audioEngineRef.current.sendControlChange(cc, val, 0)} onTriggerGenerator={(idx) => audioEngineRef.current.triggerGenerator(idx)} onConfigureInput={(idx, config) => updateInput(idx, config)} onLoadPreset={(name) => loadPreset(name)} onSaveSnapshot={(msg) => saveSnapshot(msg)} onSetProbes={(probes) => { setActiveProbes(probes); audioEngineRef.current.setProbes(probes); }} onConfigureSequencer={(bpm, steps, playing) => { if (bpm !== undefined) setSeqBpm(bpm); if (steps !== undefined) setSeqSteps(steps); if (playing !== undefined) setSeqPlaying(playing); }} getPresets={() => Object.keys(PRESETS)} getSequencerState={() => ({ bpm: seqBpm, steps: seqSteps, playing: seqPlaying })} getTelemetry={() => audioEngineRef.current.getLiveState()} getTelemetryHistory={() => audioEngineRef.current.getTelemetryHistory()} getSpectrum={() => Array.from(audioEngineRef.current.getSpectrumData())} getPeakFrequencies={(count) => audioEngineRef.current.getPeakFrequencies(count)} getHarmonics={() => audioEngineRef.current.getHarmonics()} getSignalQuality={() => audioEngineRef.current.getSignalQualityMetrics()} getAudioMetrics={() => audioEngineRef.current.getAudioMetrics()} systemPrompt={SYSTEM_PROMPT} />
 
       {showExportModal && (
         <div style={{
