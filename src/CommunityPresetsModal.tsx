@@ -46,6 +46,7 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
   const [selectedPreset, setSelectedPreset] = useState<any | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [activeAuthor, setActiveAuthor] = useState('all');
+  const [activeTag, setActiveTag] = useState('all');
   const [previewCode, setPreviewCode] = useState('');
 
   const allPresets = communityGroups.flatMap(group => 
@@ -53,16 +54,18 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
   ).sort((a, b) => a.name.localeCompare(b.name));
 
   const authors = ['all', ...Array.from(new Set(allPresets.map(p => p.author)))];
+  const tags = ['all', ...Array.from(new Set(allPresets.flatMap(p => p.meta?.tags || [])))];
 
   const filteredPresets = allPresets.filter(p => {
     const role = p.meta?.role || 'effect';
     const matchesRole = activeFilter === 'all' || role === activeFilter;
     const matchesAuthor = activeAuthor === 'all' || p.author === activeAuthor;
+    const matchesTag = activeTag === 'all' || (p.meta?.tags || []).includes(activeTag);
     const matchesSearch = filter.length === 0 || 
       p.name.toLowerCase().includes(filter.toLowerCase()) || 
       p.author.toLowerCase().includes(filter.toLowerCase()) ||
       p.meta?.description?.toLowerCase().includes(filter.toLowerCase());
-    return matchesRole && matchesAuthor && matchesSearch;
+    return matchesRole && matchesAuthor && matchesTag && matchesSearch;
   });
 
   useEffect(() => {
@@ -74,7 +77,7 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
     } else {
       setSelectedPreset(null);
     }
-  }, [filter, activeFilter, activeAuthor, communityGroups]);
+  }, [filter, activeFilter, activeAuthor, activeTag, communityGroups]);
 
   useEffect(() => {
     if (selectedPreset) {
@@ -121,7 +124,7 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
               <div style={{ padding: '5px 20px 10px', fontSize: '10px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase' }}>Categories</div>
               <div style={{ padding: '0 10px 10px', display: 'flex', gap: '6px' }}>
                 {['all', 'instrument', 'effect', 'utility'].map(f => (
-                  <button key={f} onClick={() => { setActiveFilter(f); setActiveAuthor('all'); }} style={{
+                  <button key={f} onClick={() => { setActiveFilter(f); setActiveAuthor('all'); setActiveTag('all'); }} style={{
                     flex: 1, background: activeFilter === f ? 'rgba(0,255,204,0.2)' : 'rgba(255,255,255,0.05)',
                     border: `1px solid ${activeFilter === f ? 'rgba(0,255,204,0.4)' : 'rgba(255,255,255,0.1)'}`,
                     borderRadius: '6px', padding: '6px 0', color: activeFilter === f ? '#00ffcc' : '#888', fontSize: '10px',
@@ -129,9 +132,20 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
                   }}>{f}</button>
                 ))}
               </div>
+              <div style={{ padding: '10px 20px', fontSize: '10px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>Tags</div>
+              <div style={{ padding: '10px 20px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {tags.map(tag => (
+                  <button key={tag} onClick={() => setActiveTag(tag)} style={{
+                    background: activeTag === tag ? 'rgba(255,204,0,0.2)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${activeTag === tag ? 'rgba(255,204,0,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '4px', padding: '4px 8px', color: activeTag === tag ? '#ffcc00' : '#888', fontSize: '10px',
+                    fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s'
+                  }}>{tag}</button>
+                ))}
+              </div>
               <div style={{ padding: '10px 20px', fontSize: '10px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>Authors</div>
               {authors.map(author => (
-                <div key={author} onClick={() => { setActiveAuthor(author); setActiveFilter('all'); }} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 20px', cursor: 'pointer', background: activeAuthor === author ? 'rgba(0,122,204,0.2)' : 'transparent' }}>
+                <div key={author} onClick={() => { setActiveAuthor(author); setActiveFilter('all'); setActiveTag('all'); }} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 20px', cursor: 'pointer', background: activeAuthor === author ? 'rgba(0,122,204,0.2)' : 'transparent' }}>
                   <img src={`https://github.com/${author}.png`} style={{ width: '24px', height: '24px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)' }} />
                   <span style={{ fontWeight: 'bold', color: activeAuthor === author ? '#fff' : '#888' }}>{author}</span>
                 </div>
