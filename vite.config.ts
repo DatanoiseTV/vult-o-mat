@@ -3,11 +3,11 @@ import react from '@vitejs/plugin-react'
 import { spawn } from 'child_process'
 import path from 'path'
 import os from 'os'
+import fs from 'fs'
 
 const SANDBOX_WORKDIR = process.env.VULT_SANDBOX_DIR || path.join(os.tmpdir(), 'vult-sandbox');
 
 function ensureSandboxDir() {
-  const fs = require('fs');
   if (!fs.existsSync(SANDBOX_WORKDIR)) {
     fs.mkdirSync(SANDBOX_WORKDIR, { recursive: true });
   }
