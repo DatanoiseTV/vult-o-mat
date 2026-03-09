@@ -611,14 +611,20 @@ const App: React.FC = () => {
     const ae = audioEngineRef.current;
     if (ae.getIsPlaying()) { ae.stop(); setIsPlaying(false); }
     else {
-      // Init MIDI on first play (user gesture) if not already done
+      // Attempt MIDI init in the background — never block audio on MIDI failure
       if (midiControllerRef.current && !midiReady) {
-        await midiControllerRef.current.init();
-        const ready = midiControllerRef.current.isInitialized();
-        setMidiReady(ready);
-        setMidiInputs(midiControllerRef.current.getInputs());
+        midiControllerRef.current.init().then(() => {
+          setMidiReady(midiControllerRef.current!.isInitialized());
+          setMidiInputs(midiControllerRef.current!.getInputs());
+        }).catch(() => { /* MIDI unavailable — audio still works */ });
       }
-      await ae.start();
+
+      try {
+        await ae.start();
+      } catch (e: any) {
+        setStatus('Audio Error: ' + (e?.message ?? e));
+        return;
+      }
       const result = await ae.updateCode(code);
       if (result.success) { setStatus('Running'); ae.setProbes(activeProbes); setEditorMarkers([]); }
       else { setStatus('Compile Error'); const marker = parseVultError(result.error); if (marker) setEditorMarkers([marker]); }

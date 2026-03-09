@@ -25,15 +25,21 @@ export class MIDIController {
     return this.initialized;
   }
 
-  // Must be called from a user-gesture handler (click, keydown, etc.)
+  // Must be called from a user-gesture handler (click, keydown, etc.).
+  // Never throws — errors are reported via onStatusChange only.
   public async init(): Promise<void> {
     if (this.initialized) return;
     try {
-      // Request MIDI access explicitly — required in browsers without persistent permission
-      if (navigator.requestMIDIAccess) {
-        await navigator.requestMIDIAccess({ sysex: false });
-      }
-      await WebMidi.enable({ sysex: false });
+      // Race WebMidi.enable against a 3-second timeout.
+      // Browsers silently hang when no MIDI devices are present or the
+      // permission prompt is auto-dismissed — we must not block audio on this.
+      await Promise.race([
+        WebMidi.enable({ sysex: false }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timed out')), 3000)
+        ),
+      ]);
+
       this.initialized = true;
       this.onStatusChange(`MIDI: ${WebMidi.inputs.length} input${WebMidi.inputs.length !== 1 ? 's' : ''}`);
       this.setupListeners();
@@ -49,14 +55,18 @@ export class MIDIController {
       });
     } catch (err: any) {
       this.initialized = false;
-      const msg = err?.message ?? String(err);
-      if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('permission')) {
+      const msg: string = err?.message ?? String(err);
+      if (msg.includes('timed out') || msg.includes('no devices')) {
+        this.onStatusChange('MIDI: No devices');
+      } else if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('permission')) {
         this.onStatusChange('MIDI: Permission denied');
-      } else if (msg.toLowerCase().includes('not supported') || msg.toLowerCase().includes('no midi')) {
+      } else if (msg.toLowerCase().includes('not supported')) {
         this.onStatusChange('MIDI: Not supported');
       } else {
-        this.onStatusChange(`MIDI: ${msg}`);
+        this.onStatusChange('MIDI: Unavailable');
       }
+      // Rethrow so callers can decide whether to care
+      throw err;
     }
   }
 
