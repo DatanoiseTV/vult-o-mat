@@ -24,6 +24,8 @@ export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private analyser: AnalyserNode | null = null;
+  private inputStream: MediaStream | null = null;
+  private inputNode: MediaStreamAudioSourceNode | null = null;
   private scopeBuffer: Float32Array;
   private spectrumBuffer: Uint8Array;
   private isPlaying = false;
@@ -31,13 +33,20 @@ export class AudioEngine {
   private telemetryHistory: Record<string, any>[] = [];
   private probedStates: Record<string, number[]> = {};
   private audioMetrics: Record<string, number> = { peak: 0, rms: 0, clippingCount: 0, headroom: 0 };
-  
+
   private sources: InputSource[] = [];
+  private settings = {
+    sampleRate: 0,       // 0 = use hardware default
+    bufferSize: 512,
+    inputDeviceId: 'default',
+    outputDeviceId: 'default'
+  };
 
   // Listeners for UI state updates
   private stateListeners: ((state: Record<string, any>, probes: Record<string, number[]>) => void)[] = [];
   private errorListeners: ((error: string) => void)[] = [];
   private seqStepListeners: ((step: number) => void)[] = [];
+  private audioStatusListeners: ((status: { state: string; sampleRate: number }) => void)[] = [];
 
   constructor() {
     this.scopeBuffer = new Float32Array(2048);
@@ -64,11 +73,42 @@ export class AudioEngine {
       this.seqStepListeners = this.seqStepListeners.filter(l => l !== callback);
     };
   }
+
+  public onAudioStatusUpdate(callback: (status: { state: string; sampleRate: number }) => void) {
+    this.audioStatusListeners.push(callback);
+    if (this.audioContext) {
+      callback({ state: this.audioContext.state, sampleRate: this.audioContext.sampleRate });
+    }
+    return () => {
+      this.audioStatusListeners = this.audioStatusListeners.filter(l => l !== callback);
+    };
+  }
+
   public async getDevices() {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       return devices.filter(d => d.kind === 'audioinput');
-    } catch(e) { return []; }
+    } catch (e) { return []; }
+  }
+
+  public async getAvailableDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasLabels = devices.some(d => d.label && d.label.length > 0);
+      if (!hasLabels && typeof navigator.mediaDevices.getUserMedia === 'function') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+        } catch (e) { /* permission denied */ }
+      }
+      const updatedDevices = await navigator.mediaDevices.enumerateDevices();
+      return {
+        inputs: updatedDevices.filter(d => d.kind === 'audioinput'),
+        outputs: updatedDevices.filter(d => d.kind === 'audiooutput')
+      };
+    } catch (e) {
+      return { inputs: [], outputs: [] };
+    }
   }
 
   public setSources(sources: InputSource[]) {
@@ -76,6 +116,17 @@ export class AudioEngine {
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'setSources', data: { sources: this.sources } });
     }
+  }
+
+  public async updateSettings(newSettings: Partial<typeof this.settings>) {
+    const changed = Object.keys(newSettings).some(k => (newSettings as any)[k] !== (this.settings as any)[k]);
+    if (!changed) return;
+    this.settings = { ...this.settings, ...newSettings };
+    // Settings are applied on next start() — no need to rebuild context mid-playback
+  }
+
+  public getSettings() {
+    return { ...this.settings };
   }
 
   public setProbes(probes: string[]) {
@@ -102,116 +153,81 @@ export class AudioEngine {
     }
   }
 
-  // Tear down context and nodes so start() can rebuild from scratch
-  private async destroyContext() {
-    try {
-      if (this.workletNode) {
-        this.workletNode.disconnect();
-        this.workletNode = null;
-      }
-      if (this.analyser) {
-        this.analyser.disconnect();
-        this.analyser = null;
-      }
-      if (this.audioContext) {
-        await this.audioContext.close();
-        this.audioContext = null;
-      }
-    } catch { /* ignore errors during teardown */ }
-  }
-
-  private async buildContext() {
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-
-    // Handle state changes after the context is fully built.
-    // 'interrupted' (iOS/macOS) is recoverable — resume it.
-    // 'closed' is terminal — flag for rebuild on next start().
-    this.audioContext.onstatechange = () => {
-      const state = this.audioContext?.state as string;
-      if (state === 'interrupted') {
-        // macOS/iOS audio device briefly interrupted — try to resume
-        this.audioContext?.resume().catch(() => {});
-      } else if (state === 'closed') {
-        // Context was closed externally — will be rebuilt on next start()
-        this.workletNode = null;
-        this.analyser = null;
-        this.audioContext = null;
-        this.isPlaying = false;
-      }
-    };
-
-    try {
-      await this.audioContext.audioWorklet.addModule('/vult-processor.js');
-    } catch (e) {
-      await this.destroyContext();
-      throw new Error('AudioWorklet failed to load. Check that /vult-processor.js is served correctly.');
+  public initContextSync() {
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.audioContext.addEventListener('statechange', () => {
+        this.audioStatusListeners.forEach(l => l({
+          state: this.audioContext!.state,
+          sampleRate: this.audioContext!.sampleRate
+        }));
+      });
     }
-
-    this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 2048;
-
-    this.workletNode = new AudioWorkletNode(this.audioContext, 'vult-processor', {
-      numberOfInputs: 0,   // inputs are generated inside the worklet, not from Web Audio graph
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
-
-    this.workletNode.port.onmessage = (event) => {
-      if (event.data.type === 'telemetry') {
-        this.liveState = event.data.state || {};
-        this.telemetryHistory.push({ ...this.liveState });
-        if (this.telemetryHistory.length > 20) this.telemetryHistory.shift();
-        const probes = event.data.probes || {};
-        if (event.data.metrics) this.audioMetrics = event.data.metrics;
-        this.stateListeners.forEach(l => l(this.liveState, probes));
-        if (event.data.probes) this.probedStates = event.data.probes;
-      } else if (event.data.type === 'runtimeError') {
-        this.errorListeners.forEach(l => l(event.data.error));
-      } else if (event.data.type === 'seqStep') {
-        this.seqStepListeners.forEach(l => l(event.data.step));
-      } else if (event.data.type === 'status' && !event.data.success) {
-        console.error('Worklet error:', event.data.error);
-      }
-    };
-
-    this.workletNode.connect(this.analyser);
-    this.analyser.connect(this.audioContext.destination);
-
-    this.workletNode.port.postMessage({ type: 'setSampleRate', data: { sampleRate: this.audioContext.sampleRate } });
-    this.workletNode.port.postMessage({ type: 'setSources', data: { sources: this.sources } });
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(e => console.error("Error resuming AudioContext:", e));
+    }
   }
 
   public async start() {
-    // If context is in an unrecoverable state, tear it down first
-    if (this.audioContext && this.audioContext.state === 'closed') {
-      await this.destroyContext();
-    }
-
-    if (!this.audioContext) {
+    this.initContextSync();
+    if (!this.workletNode) {
       try {
-        await this.buildContext();
+        await this.audioContext.audioWorklet.addModule('/vult-processor.js');
       } catch (e) {
-        // First attempt failed — wait briefly and retry once.
-        // macOS sometimes rejects the first AudioContext creation when the
-        // system audio device is switching (e.g. Bluetooth connect).
-        await new Promise(r => setTimeout(r, 300));
-        await this.destroyContext();
-        await this.buildContext();
+        throw new Error("AudioWorklet failed to load.");
       }
+
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 2048;
+
+      this.workletNode = new AudioWorkletNode(this.audioContext, 'vult-processor', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2]
+      });
+
+      this.workletNode.port.onmessage = (event) => {
+        if (event.data.type === 'telemetry') {
+          this.liveState = event.data.state || {};
+          this.telemetryHistory.push({ ...this.liveState });
+          if (this.telemetryHistory.length > 20) this.telemetryHistory.shift();
+          const probes = event.data.probes || {};
+          if (event.data.metrics) this.audioMetrics = event.data.metrics;
+          this.stateListeners.forEach(l => l(this.liveState, probes));
+          if (event.data.probes) this.probedStates = event.data.probes;
+        } else if (event.data.type === 'runtimeError') {
+          this.errorListeners.forEach(l => l(event.data.error));
+        } else if (event.data.type === 'seqStep') {
+          this.seqStepListeners.forEach(l => l(event.data.step));
+        } else if (event.data.type === 'status' && !event.data.success) {
+          console.error("Worklet Error:", event.data.error);
+        }
+      };
+
+      this.workletNode.connect(this.analyser);
+      this.analyser.connect(this.audioContext.destination);
+
+      this.workletNode.port.postMessage({
+        type: 'setSampleRate',
+        data: { sampleRate: this.audioContext.sampleRate }
+      });
+      this.workletNode.port.postMessage({ type: 'setSources', data: { sources: this.sources } });
+
+      // Notify audio status listeners
+      this.audioStatusListeners.forEach(l => l({
+        state: this.audioContext!.state,
+        sampleRate: this.audioContext!.sampleRate
+      }));
     }
 
-    const ctx = this.audioContext!;
-
-    // Resume if suspended — also handles 'interrupted' on macOS/iOS
-    if (ctx.state === 'suspended' || (ctx.state as string) === 'interrupted') {
-      await ctx.resume();
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
     }
-
     this.isPlaying = true;
   }
 
   public stop() {
-    if (this.audioContext && this.audioContext.state === 'running') {
+    if (this.audioContext) {
       this.audioContext.suspend();
     }
     this.isPlaying = false;
@@ -239,7 +255,7 @@ export class AudioEngine {
       if (compilation.errors && Array.isArray(compilation.errors) && compilation.errors.length > 0) {
         const msg = compilation.errors[0].msg || "Compilation Error";
         console.error("Vult Compile Error:", msg);
-        return { success: false, error: msg };
+        return { success: false, error: msg, rawErrors: compilation.errors };
       }
 
       const jsCode = compilation.code;
@@ -280,7 +296,7 @@ export class AudioEngine {
   public getPeakFrequencies(count: number = 3) {
     if (!this.analyser || !this.audioContext) return [];
     this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
-    
+
     const bins = Array.from(this.spectrumBuffer).map((energy, index) => ({
       energy,
       frequency: Math.round(index * this.audioContext!.sampleRate / this.analyser!.fftSize)
@@ -290,23 +306,23 @@ export class AudioEngine {
     return bins
       .sort((a, b) => b.energy - a.energy)
       .slice(0, count * 2) // Take a few more to filter out adjacent bins
-      .filter((v, i, a) => i === 0 || Math.abs(v.frequency - a[i-1].frequency) > 50) // Filter close frequencies
+      .filter((v, i, a) => i === 0 || Math.abs(v.frequency - a[i - 1].frequency) > 50) // Filter close frequencies
       .slice(0, count);
   }
 
   public getHarmonics() {
     if (!this.analyser || !this.audioContext) return null;
     this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
-    
+
     const bins = this.spectrumBuffer;
     const binFreq = this.audioContext.sampleRate / this.analyser.fftSize;
     const binCount = this.analyser.frequencyBinCount;
-    
+
     // Find fundamental (peak with highest energy between 40Hz and 5kHz)
     let maxEnergy = -1;
     let fundamentalBin = -1;
-    const startBin = Math.floor(40/binFreq);
-    const endBin = Math.min(binCount, Math.floor(5000/binFreq));
+    const startBin = Math.floor(40 / binFreq);
+    const endBin = Math.min(binCount, Math.floor(5000 / binFreq));
 
     for (let i = startBin; i < endBin; i++) {
       if (bins[i] > maxEnergy) {
@@ -323,7 +339,7 @@ export class AudioEngine {
     for (let h = 1; h <= 8; h++) {
       const targetFreq = fundamental * h;
       const targetBin = Math.round(targetFreq / binFreq);
-      
+
       if (targetBin >= binCount) break;
 
       // Look at small window around target bin for the local peak
@@ -348,7 +364,7 @@ export class AudioEngine {
   public getSignalQualityMetrics() {
     if (!this.analyser || !this.audioContext) return null;
     this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
-    
+
     const bins = this.spectrumBuffer;
     const minDb = this.analyser.minDecibels;
     const maxDb = this.analyser.maxDecibels;
@@ -408,4 +424,11 @@ export class AudioEngine {
     }
   }
   public getIsPlaying() { return this.isPlaying; }
+
+  public getAudioStatus() {
+    return {
+      state: this.audioContext?.state || 'suspended',
+      sampleRate: this.audioContext?.sampleRate || 0
+    };
+  }
 }

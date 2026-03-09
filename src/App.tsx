@@ -26,7 +26,7 @@ const PRESETS: Record<string, string> = {
   return y0;
 }
 
-fun process(input: real) : real {
+fun process(input: real) {
   mem cutoff_cc;
   val fc = cutoff_cc * 0.5 + 0.01;
   val b0 = fc; val b1 = fc; val b2 = 0.0;
@@ -44,11 +44,11 @@ fun controlChange(control: int, value: int, channel: int) {
   }
 }
 `,
-  "Simple Volume": `fun process(input: real, volume: real) : real {
+  "Simple Volume": `fun process(input: real, volume: real) {
   return input * volume;
 }
 `,
-  "Minimal": `fun process(input: real) : real {
+  "Minimal": `fun process(input: real) {
   return input;
 }
 
@@ -64,265 +64,298 @@ and controlChange(control: int, value: int, channel: int) {
 and default() {
 }
 `,
-  "vs80": `// --- 1. UTILITIES & MATH ---
+  "vs80": `// =============================================================================
+// VULT CS-80 "FAT EDITION" - V15 (DUAL VCO + SATURATION + LOW-SHELF)
+// Ultimate low-end weight and harmonic richness.
+// =============================================================================
+
+// --- 1. UTILITIES & MATH ---
+
 fun pitchToRate(pitch: real) : real @[table(size=127,min=0.0,max=127.0)] {
     return 8.1757989156 * exp(0.05776226505 * pitch) / 44100.0;
 }
 
-// Anti-aliasing polynomial (PolyBLEP)
 fun polyblep(phase: real, inc: real) : real {
     val t = phase / inc;
-    if (t < 1.0) { 
-        return t + t - t * t - 1.0; 
-    } else if (t > (1.0 / inc) - 1.0) {
+    if (t < 1.0) { return t + t - t * t - 1.0; } 
+    else if (t > (1.0 / inc) - 1.0) {
         val t2 = (t - (1.0 / inc));
         return t2 * t2 + t2 + t2 + 1.0;
     }
     return 0.0;
 }
 
-fun wrap_idx(idx_raw: int) : int {
-    val out = 0;
-    if (idx_raw < 0) { out = idx_raw + 1024; } else { out = idx_raw; }
+fun wrap_idx(idx_raw: int, size: int) : int {
+    val out = idx_raw % size;
+    if (out < 0) { out = out + size; }
     return out;
 }
 
-// --- 2. CS-80 CORE COMPONENTS ---
+fun lerp(a: real, b: real, t: real) : real {
+    return a + (b - a) * t;
+}
 
-// Global LFO for PWM and Vibrato
-fun cs80_lfo(rate: real) : real {
+// --- 2. CORE COMPONENTS ---
+
+fun cs80_vibrato(rate: real, depth: real) : real {
     mem phase: real;
-    val inc = (0.1 + rate * 15.0) / 44100.0;
+    val inc = (0.5 + rate * 10.0) / 44100.0;
     phase = phase + inc;
     if (phase >= 1.0) { phase = phase - 1.0; }
-    
-    val out = 0.0;
-    if (phase < 0.5) { out = phase * 4.0 - 1.0; } 
-    else { out = 3.0 - phase * 4.0; }
-    return out;
+    return sin(phase * 6.2831853) * depth * 0.5;
 }
 
-// CS-80 Oscillator - advances phase and returns the complex (Saw+Square) output.
-// MUST be called before cs80_vco_sine each sample, as it advances the shared phase.
-fun cs80_vco_complex(cv: real, pwm_base: real, pwm_mod: real) : real {
+fun cs80_vco(cv: real, pwm_base: real, pwm_mod: real) : real {
     mem phase: real;
     val inc = pitchToRate(clip(cv, 0.0, 127.0));
-    
     phase = phase + inc;
     if (phase >= 1.0) { phase = phase - 1.0; }
-    
-    // 1. Anti-Aliased Sawtooth
     val saw = (1.0 - 2.0 * phase) + polyblep(phase, inc);
-    
-    // 2. Anti-Aliased Square / PWM
-    val pw = clip(pwm_base + pwm_mod, 0.05, 0.95);
+    val pw = clip(pwm_base + pwm_mod, 0.1, 0.9);
     val p2 = phase + 1.0 - pw;
-    val p2_wrapped = 0.0;
-    if (p2 >= 1.0) { p2_wrapped = p2 - 1.0; } else { p2_wrapped = p2; }
-    
-    val naive_sq = 0.0;
-    if (phase < pw) { naive_sq = 1.0; } else { naive_sq = -1.0; }
+    val p2_wrapped = if p2 >= 1.0 then p2 - 1.0 else p2;
+    val naive_sq = if phase < pw then 1.0 else -1.0;
     val sqr = naive_sq + polyblep(phase, inc) - polyblep(p2_wrapped, inc);
-    
     return (saw + sqr) * 0.5;
 }
 
-// CS-80 Oscillator - returns the Pure Sine output from the SAME phase memory
-// as cs80_vco_complex. Call this AFTER cs80_vco_complex each sample.
-// The mem phase here refers to the same instance's phase when called on
-// the same voice context. Both functions share state per-voice via Vult's
-// instance model when called inside cs80_voice.
-fun cs80_vco_sine(cv: real) : real {
+fun cs80_sub_osc(cv: real) : real {
     mem phase: real;
-    // Phase is already advanced by cs80_vco_complex — just read it.
-    // Pure Sine Wave (The secret to the CS-80's massive weight)
-    return sin(phase * 6.2831853);
+    val inc = pitchToRate(clip(cv - 12.0, 0.0, 127.0));
+    phase = phase + inc;
+    if (phase >= 1.0) { phase = phase - 1.0; }
+    val pw = 0.5;
+    val p2 = phase + 1.0 - pw;
+    val p2_wrapped = if p2 >= 1.0 then p2 - 1.0 else p2;
+    val naive_sq = if phase < pw then 1.0 else -1.0;
+    val sqr = naive_sq + polyblep(phase, inc) - polyblep(p2_wrapped, inc);
+    val tri = if phase < 0.5 then 4.0 * phase - 1.0 else 3.0 - 4.0 * phase;
+    return sqr * 0.6 + tri * 0.4;
 }
 
-// Zero-Delay Feedback (ZDF) State Variable Filter (12dB/Octave)
-// The CS-80 uses a 12dB HPF chained directly into a 12dB LPF.
-fun cs80_svf(in_sig: real, cv: real, res: real, is_hp: bool) : real {
-    mem ic1eq: real; 
-    mem ic2eq: real;
-    
-    val g = clip(pitchToRate(cv) * 3.14159 * 2.0, 0.001, 0.99);
-    val k = 2.0 - (clip(res, 0.0, 1.0) * 1.9); // Damping factor (High res = low k)
-    
+fun cs80_pitch_eg(gate: bool, start_pitch: real, time: real) : real {
+    mem env: real;
+    mem prev_gate: bool;
+    val rate = 1.0 / (0.001 + time * 1.0 * 44100.0);
+    if (gate == true) {
+        if (prev_gate == false) { env = start_pitch; }
+        env = env + (0.0 - env) * rate;
+    } else {
+        env = 0.0;
+    }
+    prev_gate = gate;
+    return env;
+}
+
+fun cs80_filter(in_sig: real, cv: real, res: real, is_hp: bool) : real {
+    mem ic1eq: real; mem ic2eq: real;
+    val g = clip(pitchToRate(cv) * 3.14159 * 2.0, 0.001, 0.9);
+    val k = 2.0 - (clip(res, 0.0, 1.0) * 1.9);
     val a1 = 1.0 / (1.0 + g * (g + k));
     val a2 = g * a1;
     val a3 = g * a2;
-    
     val v3 = in_sig - ic2eq;
     val v1 = a1 * ic1eq + a2 * v3;
     val v2 = ic2eq + a2 * ic1eq + a3 * v3;
-    
     ic1eq = 2.0 * v1 - ic1eq;
     ic2eq = 2.0 * v2 - ic2eq;
-    
-    val hp = in_sig - k * v1 - v2;
-    val lp = v2;
-    
-    val out = 0.0;
-    if (is_hp == true) { out = hp; } else { out = lp; }
-    
-    // Gentle analog saturation to prevent SVF blowup
-    return tanh(out * 1.2); 
+    val out = if is_hp == true then in_sig - k * v1 - v2 else v2;
+    return out;
 }
 
-// Punchy Exponential Envelope
-fun cs80_eg(gate: bool, a_cv: real, d_cv: real, s_cv: real, r_cv: real) : real {
-    mem state: int; mem env_val: real; mem prev_gate: bool;
-    
-    if (gate == true && prev_gate == false) { state = 1; }
-    if (gate == false && prev_gate == true) { state = 4; }
-    prev_gate = gate;
-    
-    if (state == 1) { 
-        env_val = env_val + (1.0 / (0.001 + a_cv * 2.0 * 44100.0));
-        if (env_val >= 1.0) { env_val = 1.0; state = 2; }
-    } else if (state == 2) { 
-        env_val = env_val - (1.0 / (0.001 + d_cv * 2.0 * 44100.0));
-        if (env_val <= s_cv) { env_val = s_cv; state = 3; }
-    } else if (state == 3) { 
-        if (env_val > s_cv) { env_val = env_val - 0.001; }
-        if (env_val < s_cv) { env_val = env_val + 0.001; }
-    } else if (state == 4) { 
-        env_val = env_val - (1.0 / (0.001 + r_cv * 3.0 * 44100.0));
-        if (env_val <= 0.0) { env_val = 0.0; state = 0; }
+fun adsr(gate: bool, a: real, d: real, s: real, r: real) : real {
+    mem state: int; mem v: real; mem prev_gate: bool;
+    val a_r = 1.0 / (0.001 + a * 2.0 * 44100.0);
+    val d_r = 1.0 / (0.01 + d * 4.0 * 44100.0);
+    val r_r = 1.0 / (0.01 + r * 5.0 * 44100.0);
+    if (gate == true) {
+        if (prev_gate == false) { state = 1; v = 0.0; }
+        if (state == 1) { v = v + a_r; if (v >= 1.0) { v = 1.0; state = 2; } }
+        else if (state == 2) { v = v + (s - v) * d_r; }
     } else {
-        env_val = 0.0;
+        state = 0;
+        v = v + (0.0 - v) * r_r;
     }
-    
-    return env_val * env_val; // Exponential curve
+    prev_gate = gate;
+    return v;
 }
 
-// The Famous Blade Runner Ring Modulator (Per-Voice for expression)
-fun cs80_ringmod(in_sig: real, env: real, depth: real, speed_base: real, speed_env_amt: real) : real {
-    mem rm_phase: real;
-    
-    // Envelope drives the speed of the ring modulation sweep
-    val current_speed = speed_base + (env * speed_env_amt * 80.0);
-    val inc = current_speed / 44100.0;
-    
-    rm_phase = rm_phase + inc;
-    if (rm_phase >= 1.0) { rm_phase = rm_phase - 1.0; }
-    
-    val rm_osc = sin(rm_phase * 6.2831853);
-    
-    // Blend dry signal with amplitude-modulated (Ring Mod) signal
-    val dry = in_sig * (1.0 - depth);
-    val wet = (in_sig * rm_osc) * depth;
-    
-    return dry + wet;
-}
+// --- 3. EFFECTS ---
 
-// --- 3. VOICE ARCHITECTURE & FX ---
-
-fun cs80_voice(
-    gate: bool, note: real, pb: real, lfo_val: real,
-    saw_sqr_mix: real, sine_lvl: real, pwm_amt: real,
-    hp_c: real, hp_res: real, lp_c: real, lp_res: real, filter_eg_amt: real,
-    eg_a: real, eg_d: real, eg_s: real, eg_r: real,
-    rm_depth: real, rm_speed: real, rm_env: real
-) : real {
-    
-    val env = cs80_eg(gate, eg_a, eg_d, eg_s, eg_r);
-    
-    // Minor analog pitch instability
-    val analog_drift = sin(note * 13.0) * 0.05; 
-    val pitch = note + pb + analog_drift;
-    
-    // FIX: Split tuple return into two separate calls.
-    // cs80_vco_complex advances phase; cs80_vco_sine reads the same phase.
-    val complex_osc = cs80_vco_complex(pitch, 0.5, lfo_val * pwm_amt);
-    val pure_sine   = cs80_vco_sine(pitch);
-    
-    // Filter Cascade: Complex Osc -> 12dB HPF -> 12dB LPF
-    val cutoff_mod = (env * filter_eg_amt * 48.0);
-    val hpf_out = cs80_svf(complex_osc * saw_sqr_mix, hp_c + (cutoff_mod * 0.5), hp_res, true);
-    val lpf_out = cs80_svf(hpf_out, lp_c + cutoff_mod, lp_res, false);
-    
-    // THE CS-80 SECRET: Add the pure Sine wave directly to the VCA, bypassing the filters!
-    val mixed_vca_in = lpf_out + (pure_sine * sine_lvl);
-    
-    // VCA
-    val vca_out = mixed_vca_in * env;
-    
-    // Ring Modulator
-    val final_out = cs80_ringmod(vca_out, env, rm_depth, rm_speed, rm_env);
-    
-    return final_out;
-}
-
-// CS-80 Symphonic Chorus & Tremolo
-fun symphonic_chorus(in_sig: real, on: bool) : real {
-    mem b1: array(real, 1024); 
-    mem pos: int; 
-    mem lfo_ph: real;
-    
-    if (on == false) { return in_sig; }
-    
+fun roland_chorus(in_sig: real, depth: real) : real {
+    mem b1: array(real, 1024); mem pos: int; mem lfo: real;
     pos = (pos + 1) % 1024;
     b1[pos] = in_sig;
+    lfo = lfo + (0.6 / 44100.0);
+    if (lfo >= 1.0) { lfo = 0.0; }
+    val tri = if lfo < 0.5 then lfo * 4.0 - 1.0 else 3.0 - lfo * 4.0;
+    val mod_depth = depth * 150.0;
+    val offset1 = 660.0 + (tri * mod_depth);
+    val offset2 = 660.0 - (tri * mod_depth);
     
-    // 2.5 Hz lush sweep
-    lfo_ph = lfo_ph + (2.5 / 44100.0);
-    if (lfo_ph >= 1.0) { lfo_ph = lfo_ph - 1.0; }
+    val i1 = int(offset1); val f1 = offset1 - real(i1);
+    val t1 = lerp(b1[wrap_idx(pos - i1, 1024)], b1[wrap_idx(pos - i1 - 1, 1024)], f1);
     
-    val sine1 = sin(lfo_ph * 6.28318);
-    val sine2 = sin((lfo_ph + 0.5) * 6.28318); // 180 degree offset
+    val i2 = int(offset2); val f2 = offset2 - real(i2);
+    val t2 = lerp(b1[wrap_idx(pos - i2, 1024)], b1[wrap_idx(pos - i2 - 1, 1024)], f2);
     
-    // Delay Time Modulation (Chorus)
-    val tap1 = b1[wrap_idx(pos - 150 - int(sine1 * 35.0))];
-    val tap2 = b1[wrap_idx(pos - 150 - int(sine2 * 35.0))];
-    
-    // Amplitude Modulation (Tremolo - subtle)
-    val trem1 = 0.8 + (sine1 * 0.2);
-    val trem2 = 0.8 + (sine2 * 0.2);
-    
-    return (in_sig * 0.4) + (tap1 * trem1 * 0.3) + (tap2 * trem2 * 0.3);
+    return in_sig * 0.5 + t1 * 0.25 + t2 * 0.25;
 }
 
-// --- 4. 6-VOICE HOST INTERFACE ---
+fun pitch_shifter(in_sig: real) : real {
+    mem buffer: array(real, 2048);
+    mem write_ptr: int;
+    mem phase: real;
+    
+    write_ptr = (write_ptr + 1) % 2048;
+    buffer[write_ptr] = in_sig;
+    
+    phase = phase + (1.0 / 2048.0); 
+    if (phase >= 1.0) { phase = phase - 1.0; }
+    
+    val mod1 = (1.0 - phase) * 2048.0;
+    val phase2 = if phase + 0.5 >= 1.0 then phase - 0.5 else phase + 0.5;
+    val mod2 = (1.0 - phase2) * 2048.0;
+    
+    val i1 = int(mod1); val f1 = mod1 - real(i1);
+    val tap1 = lerp(buffer[wrap_idx(write_ptr - i1, 2048)], buffer[wrap_idx(write_ptr - i1 - 1, 2048)], f1);
+    
+    val i2 = int(mod2); val f2 = mod2 - real(i2);
+    val tap2 = lerp(buffer[wrap_idx(write_ptr - i2, 2048)], buffer[wrap_idx(write_ptr - i2 - 1, 2048)], f2);
+    
+    val fade = if phase < 0.5 then phase * 2.0 else 2.0 - phase * 2.0;
+    return tap1 * fade + tap2 * (1.0 - fade);
+}
+
+fun shimmer_reverb(in_sig: real, mix: real, decay: real, shimmer: real, lush: real, damp: real) : real {
+    mem d1: array(real, 1031); mem d2: array(real, 1381);
+    mem d3: array(real, 1619); mem d4: array(real, 1979);
+    mem p1: int; mem p2: int; mem p3: int; mem p4: int;
+    mem s1: real; mem s2: real; mem s3: real; mem s4: real;
+    mem lp: real; mem dc: real; mem lfo: real;
+
+    p1 = (p1 + 1) % 1031; p2 = (p2 + 1) % 1381;
+    p3 = (p3 + 1) % 1619; p4 = (p4 + 1) % 1979;
+
+    lfo = lfo + (0.15 / 44100.0);
+    if (lfo >= 1.0) { lfo = 0.0; }
+    val mod = sin(lfo * 6.2831853) * lush * 12.0;
+
+    // Hadamard Matrix
+    val f1 = 0.5 * (s1 + s2 + s3 + s4);
+    val f2 = 0.5 * (s1 - s2 + s3 - s4);
+    val f3 = 0.5 * (s1 + s2 - s3 - s4);
+    val f4 = 0.5 * (s1 - s2 - s3 + s4);
+
+    // Shimmer + Soft Clipping for stability
+    val shim_in = tanh((f1 + f2 + f3 + f4) * 0.5);
+    val shim_sig = pitch_shifter(shim_in) * shimmer * 1.2;
+    
+    // Damping & DC Block
+    lp = lp + (shim_sig - lp) * (1.0 - damp * 0.9);
+    dc = dc + (f1 - dc) * 0.001;
+
+    // Conservative feedback gain (max 0.85)
+    val fb = decay * 0.85;
+    
+    // Inject shimmer and feedback with tanh safety
+    d1[p1] = in_sig + tanh((f1 - dc) * fb + lp * 0.5);
+    d2[p2] = in_sig + tanh((f2 - dc) * fb);
+    d3[p3] = in_sig + tanh((f3 - dc) * fb);
+    d4[p4] = in_sig + tanh((f4 - dc) * fb);
+
+    // Linear Interpolated Reads
+    val i1 = int(10.0 + mod); val fr1 = (10.0 + mod) - real(i1);
+    s1 = lerp(d1[wrap_idx(p1 - i1, 1031)], d1[wrap_idx(p1 - i1 - 1, 1031)], fr1);
+    
+    val i2 = int(10.0 + mod); val fr2 = (10.0 + mod) - real(i2);
+    s2 = lerp(d2[wrap_idx(p2 - i2, 1381)], d2[wrap_idx(p2 - i2 - 1, 1381)], fr2);
+    
+    val i3 = int(10.0 + mod); val fr3 = (10.0 + mod) - real(i3);
+    s3 = lerp(d3[wrap_idx(p3 - i3, 1619)], d3[wrap_idx(p3 - i3 - 1, 1619)], fr3);
+    
+    val i4 = int(10.0 + mod); val fr4 = (10.0 + mod) - real(i4);
+    s4 = lerp(d4[wrap_idx(p4 - i4, 1979)], d4[wrap_idx(p4 - i4 - 1, 1979)], fr4);
+
+    val wet = (s1 + s2 + s3 + s4) * 0.25;
+    return in_sig + wet * mix;
+}
+
+// --- 4. VOICE ARCHITECTURE ---
+
+fun cs80_voice(
+    gate: bool, note: real, pb: real, vib: real,
+    pwm_amt: real, sub_amt: real, detune: real, drive: real,
+    hp_c: real, lp_c: real, res: real,
+    eg_a: real, eg_d: real, eg_s: real, eg_r: real,
+    p_start: real, p_time: real
+) : real {
+    val amp_env = adsr(gate, eg_a, eg_d, eg_s, eg_r);
+    val pit_env = cs80_pitch_eg(gate, p_start, p_time);
+    val pitch = note + pb + vib + pit_env;
+    
+    // Dual VCO with Detune
+    val osc1 = cs80_vco(pitch, 0.5, vib * pwm_amt);
+    val osc2 = cs80_vco(pitch + detune * 0.5, 0.5, vib * pwm_amt);
+    val sub = cs80_sub_osc(pitch);
+    
+    // Mix and Saturate
+    val mixed = (osc1 + osc2) * 0.5 + sub * sub_amt;
+    val driven = tanh(mixed * (1.0 + drive * 4.0));
+    
+    val hpf = cs80_filter(driven, hp_c, 0.1, true);
+    val lpf = cs80_filter(hpf, lp_c + (amp_env * 70.0), res, false);
+    
+    return tanh(lpf * amp_env);
+}
+
+// --- 5. HOST INTERFACE ---
+
+fun low_shelf(in_sig: real, freq: real, gain: real) : real {
+    mem lp: real;
+    val alpha = pitchToRate(freq) * 3.14159 * 2.0;
+    lp = lp + (in_sig - lp) * alpha;
+    return in_sig + lp * gain;
+}
 
 fun process(input: real) : real {
-    mem n1: real; mem g1: bool; 
-    mem n2: real; mem g2: bool;
-    mem n3: real; mem g3: bool; 
-    mem n4: real; mem g4: bool;
-    mem n5: real; mem g5: bool; 
-    mem n6: real; mem g6: bool;
-    
-    mem pb: real; mem lfo_rate: real;
-    mem saw_sqr_mix: real; mem sine_lvl: real; mem pwm_amt: real;
-    mem hp_c: real; mem hp_res: real; mem lp_c: real; mem lp_res: real; mem eg_f: real;
-    mem eg_a: real; mem eg_d: real; mem eg_s: real; mem eg_r: real;
-    mem rm_depth: real; mem rm_speed: real; mem rm_env: real;
-    mem symph_on: bool;
+    mem n1: real; mem n2: real; mem n3: real; mem n4: real; mem n5: real; mem n6: real;
+    mem g1: bool; mem g2: bool; mem g3: bool; mem g4: bool; mem g5: bool; mem g6: bool;
+    mem pb: real; mem vib_rate: real; mem vib_depth: real; mem pwm_amt: real; mem sub_amt: real;
+    mem detune: real; mem drive: real;
+    mem hp_c: real; mem lp_c: real; mem res: real; mem eg_a: real; mem eg_d: real; mem eg_s: real; mem eg_r: real;
+    mem p_start: real; mem p_time: real; mem chorus_depth: real; mem vol: real;
+    mem rev_mix: real; mem rev_decay: real; mem rev_shimmer: real; mem rev_lush: real; mem rev_damp: real;
+    mem voice_ptr: int;
 
-    val lfo = cs80_lfo(lfo_rate);
+    val vib = cs80_vibrato(vib_rate, vib_depth);
 
-    val o1 = cs80_voice(g1, n1, pb, lfo, saw_sqr_mix, sine_lvl, pwm_amt, hp_c, hp_res, lp_c, lp_res, eg_f, eg_a, eg_d, eg_s, eg_r, rm_depth, rm_speed, rm_env);
-    val o2 = cs80_voice(g2, n2, pb, lfo, saw_sqr_mix, sine_lvl, pwm_amt, hp_c, hp_res, lp_c, lp_res, eg_f, eg_a, eg_d, eg_s, eg_r, rm_depth, rm_speed, rm_env);
-    val o3 = cs80_voice(g3, n3, pb, lfo, saw_sqr_mix, sine_lvl, pwm_amt, hp_c, hp_res, lp_c, lp_res, eg_f, eg_a, eg_d, eg_s, eg_r, rm_depth, rm_speed, rm_env);
-    val o4 = cs80_voice(g4, n4, pb, lfo, saw_sqr_mix, sine_lvl, pwm_amt, hp_c, hp_res, lp_c, lp_res, eg_f, eg_a, eg_d, eg_s, eg_r, rm_depth, rm_speed, rm_env);
-    val o5 = cs80_voice(g5, n5, pb, lfo, saw_sqr_mix, sine_lvl, pwm_amt, hp_c, hp_res, lp_c, lp_res, eg_f, eg_a, eg_d, eg_s, eg_r, rm_depth, rm_speed, rm_env);
-    val o6 = cs80_voice(g6, n6, pb, lfo, saw_sqr_mix, sine_lvl, pwm_amt, hp_c, hp_res, lp_c, lp_res, eg_f, eg_a, eg_d, eg_s, eg_r, rm_depth, rm_speed, rm_env);
+    val o1 = cs80_voice(g1, n1, pb, vib, pwm_amt, sub_amt, detune, drive, hp_c, lp_c, res, eg_a, eg_d, eg_s, eg_r, p_start, p_time);
+    val o2 = cs80_voice(g2, n2, pb, vib, pwm_amt, sub_amt, detune, drive, hp_c, lp_c, res, eg_a, eg_d, eg_s, eg_r, p_start, p_time);
+    val o3 = cs80_voice(g3, n3, pb, vib, pwm_amt, sub_amt, detune, drive, hp_c, lp_c, res, eg_a, eg_d, eg_s, eg_r, p_start, p_time);
+    val o4 = cs80_voice(g4, n4, pb, vib, pwm_amt, sub_amt, detune, drive, hp_c, lp_c, res, eg_a, eg_d, eg_s, eg_r, p_start, p_time);
+    val o5 = cs80_voice(g5, n5, pb, vib, pwm_amt, sub_amt, detune, drive, hp_c, lp_c, res, eg_a, eg_d, eg_s, eg_r, p_start, p_time);
+    val o6 = cs80_voice(g6, n6, pb, vib, pwm_amt, sub_amt, detune, drive, hp_c, lp_c, res, eg_a, eg_d, eg_s, eg_r, p_start, p_time);
     
-    val dry = tanh((o1 + o2 + o3 + o4 + o5 + o6) * 0.25);
+    val mix = (o1 + o2 + o3 + o4 + o5 + o6) * 0.25;
+    val chorused = roland_chorus(mix, chorus_depth);
+    val reverbed = shimmer_reverb(chorused, rev_mix, rev_decay, rev_shimmer, rev_lush, rev_damp);
     
-    return symphonic_chorus(dry, symph_on);
+    // Final Bass Boost (Low Shelf at 150Hz)
+    val final_out = low_shelf(reverbed, 30.0, 0.5);
+    
+    return final_out * vol;
 }
 
 and noteOn(n: int, v: int, ch: int) {
     val rn = real(n);
-    if (g1 == false) { n1 = rn; g1 = true; } 
-    else if (g2 == false) { n2 = rn; g2 = true; }
-    else if (g3 == false) { n3 = rn; g3 = true; }
-    else if (g4 == false) { n4 = rn; g4 = true; }
-    else if (g5 == false) { n5 = rn; g5 = true; }
-    else if (g6 == false) { n6 = rn; g6 = true; }
-    else { n1 = rn; g1 = true; } 
+    voice_ptr = (voice_ptr + 1) % 6;
+    if (voice_ptr == 0) { n1 = rn; g1 = true; }
+    else if (voice_ptr == 1) { n2 = rn; g2 = true; }
+    else if (voice_ptr == 2) { n3 = rn; g3 = true; }
+    else if (voice_ptr == 3) { n4 = rn; g4 = true; }
+    else if (voice_ptr == 4) { n5 = rn; g5 = true; }
+    else if (voice_ptr == 5) { n6 = rn; g6 = true; }
 }
 
 and noteOff(n: int, ch: int) {
@@ -336,53 +369,40 @@ and noteOff(n: int, ch: int) {
 }
 
 and controlChange(c: int, v: int, ch: int) {
-    val val_norm = real(v) / 127.0;
-    
-    if (c == 30) { saw_sqr_mix = val_norm; }  // Mix between complex oscillators      
-    else if (c == 31) { sine_lvl = val_norm; } // Pure Sine Bypass Volume                 
-    else if (c == 32) { pwm_amt = val_norm; }  // PWM Depth                
-    else if (c == 35) { lfo_rate = val_norm; } // Global LFO speed
-    
-    else if (c == 74) { lp_c = val_norm * 127.0; } // 12dB LPF
-    else if (c == 71) { lp_res = val_norm; }       
-    else if (c == 76) { hp_c = val_norm * 127.0; } // 12dB HPF
-    else if (c == 77) { hp_res = val_norm; }       
-    else if (c == 40) { eg_f = val_norm; }          // Filter Env Amount
-    
-    else if (c == 73) { eg_a = val_norm; }                    
-    else if (c == 75) { eg_d = val_norm; }                    
-    else if (c == 79) { eg_s = val_norm; }                    
-    else if (c == 72) { eg_r = val_norm; }                    
-    
-    else if (c == 80) { rm_depth = val_norm; }        // Ring Modulator Intensity
-    else if (c == 81) { rm_speed = val_norm * 40.0; } // Ring Modulator Base Speed
-    else if (c == 82) { rm_env = val_norm; }          // Envelope to Ring Mod Speed Sweep
-    
-    else if (c == 45) { if (v > 64) { symph_on = true; } else { symph_on = false; } } 
+    val vn = real(v) / 127.0;
+    if (c == 30) { vib_rate = vn; }
+    else if (c == 31) { vib_depth = vn; }
+    else if (c == 32) { pwm_amt = vn; }
+    else if (c == 38) { sub_amt = vn; }
+    else if (c == 39) { detune = vn; }
+    else if (c == 40) { drive = vn; }
+    else if (c == 74) { lp_c = vn * 100.0; }
+    else if (c == 71) { res = vn; }
+    else if (c == 76) { hp_c = vn * 100.0; }
+    else if (c == 73) { eg_a = vn; }
+    else if (c == 75) { eg_d = vn; }
+    else if (c == 79) { eg_s = vn; }
+    else if (c == 72) { eg_r = vn; }
+    else if (c == 80) { p_start = (vn - 0.5) * 12.0; }
+    else if (c == 81) { p_time = vn; }
+    else if (c == 82) { chorus_depth = vn; }
+    else if (c == 33) { rev_mix = vn; }
+    else if (c == 34) { rev_decay = vn; }
+    else if (c == 35) { rev_shimmer = vn; }
+    else if (c == 36) { rev_lush = vn; }
+    else if (c == 37) { rev_damp = vn; }
+    else if (c == 41) { vol = vn; }
 }
 
 and default() {
-    g1 = false; g2 = false; g3 = false; g4 = false; g5 = false; g6 = false;
-    
-    // --- "TEARS IN RAIN" PRESET ---
-    // The quintessential Vangelis CS-80 Brass. Massive sub-sine weight,
-    // swept 12dB filters, and an envelope-driven ring modulation shimmer
-    // on the attack of the note. Widened by the Symphonic Chorus.
-
-    saw_sqr_mix = 1.0; sine_lvl = 0.6;           // Heavy Saw/Square mixed with huge Pure Sine
-    pwm_amt = 0.02; lfo_rate = 0.15;               // Lush Pulse Width Modulation
-    
-    hp_c = 30.0; hp_res = 0.4;                   // 12dB HPF cuts extreme mud, adds vocal growl
-    lp_c = 45.0; lp_res = 0.2;                   // 12dB LPF starts warm
-    eg_f = 0.8;                                  // Envelope sweeps the LPF open
-    
-    eg_a = 0.01; eg_d = 0.3;                     // Sluggish, majestic brass attack
-    eg_s = 0.5; eg_r = 0.35;                     // Lingering, singing release
-    
-    rm_depth = 0.15;                             // Subtle Ring Mod Shimmer
-    rm_speed = 0.2; rm_env = 0.15;                // Envelope sweeps the Ring Mod frequency fast
-    
-    symph_on = false;                             // SYMPHONIC CHORUS/TREMOLO ENGAGED
+    vib_rate = 0.4; vib_depth = 0.1; pwm_amt = 0.2; sub_amt = 0.5;
+    detune = 0.15; drive = 0.3;
+    lp_c = 40.0; hp_c = 20.0; res = 0.5;
+    eg_a = 0.01; eg_d = 0.2; eg_s = 0.4; eg_r = 0.2;
+    p_start = 0.5; p_time = 0.05; 
+    chorus_depth = 0.7; vol = 0.8;
+    rev_mix = 0.4; rev_decay = 0.8; rev_shimmer = 0.5; rev_lush = 0.5; rev_damp = 0.3;
+    voice_ptr = 0;
 }
 `
 };
@@ -395,7 +415,7 @@ STRICT VULT LANGUAGE CONSTRAINTS:
 1. DO NOT use 'and', 'or', 'not'. Use C-style '&&', '||', '!' operators ONLY.
 2. EVERY statement MUST end with a semicolon ';'.
 3. Use 'real' for all floating point operations and 'int' for indices/counters.
-4. Entry point MUST be 'fun process(input: real, ...) : real'. Additional parameters (knobs) are mapped automatically.
+4. Entry point MUST be 'fun process(input: real, ...)' – it can return a single 'real' (Mono) or multiple values (Stereo, e.g. 'return L, R;'). IMPORTANT: All return points in the same function MUST return the same type (either all mono or all stereo). Additional parameters (knobs) match CCs automatically.
 
 CODE INTEGRITY MANDATE:
 - When using 'update_code', you MUST provide the ENTIRE source code of the program. NEVER provide partial snippets, single functions, or placeholders.
@@ -426,25 +446,6 @@ AUTONOMOUS EXECUTION:
 - DO NOT PERFORM 'RESEARCH-ONLY' TURNS. If you call 'get_current_code' or 'list_functions', you MUST also call an editing or testing tool in the same turn or the very next turn.
 - TREAT 'write_plan' AS A STARTING ACTION, NEVER AN ENDING ACTION. You MUST implement at least one change after planning in the same turn.
 - You are in an autonomous loop. Use tool calls sequentially to achieve the goal. DO NOT wait for user confirmation unless using 'ask_user'.
-- NEVER end a turn until the requested feature is implemented, compiled, AND VERIFIED.
-- Stopping with "no more further actions" before verifying the signal is a failure of your role. MAINTAIN MOMENTUM.
-
-VERIFICATION MANDATE:
-- Every task is incomplete until you have verified the behavioral correctness of the change.
-- You MUST use 'get_live_telemetry' to check internal state and 'get_spectrum_data', 'get_harmonics' or 'get_signal_quality' to verify audio output before concluding a task.
-- Only when you have empirical evidence that the code works as intended should you use 'tell' to signal task completion.
-
-Persistence: If a tool fails (e.g. 'apply_diff' pattern not found), DO NOT give up. Try a different strategy immediately (e.g. 'edit_lines' or 'update_code'). Try at least 3 times with different approaches before asking for help.
-Communication: Use 'tell' frequently to inform the user about your progress, findings, and planned next steps. NEVER end a turn abruptly without explaining your state.
-
-COMMUNICATION STYLE:
-- Act as a Senior DSP Research Scientist and Mentor. 
-- Provide deep technical insights into OCaml-style Vult code generation.
-- When the user asks a question, don't just answer; explain the underlying physical or mathematical principles (e.g., Fourier Transform, Z-domain stability, aliasing).
-- Be extremely verbose and detailed about your internal state and planned actions.
-- Use 'user_message' to provide status updates for complex multi-step operations.
-- Your 'Red Scanner' thinking state indicates high-intensity DSP computation.
-- If a compilation error occurs, perform a detailed post-mortem analysis of the error trace before attempting a fix.
 - Always verify your work using 'get_live_telemetry' and 'get_spectrum_data' to ensure the audible result matches your mathematical model.
 `;
 
@@ -454,6 +455,7 @@ const App: React.FC = () => {
   const [savedProjects, setSavedProjects] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [status, setStatus] = useState('Idle');
+  const [audioStatus, setAudioStatus] = useState<{ state: string; sampleRate: number }>({ state: 'suspended', sampleRate: 0 });
   const [midiStatus, setMidiStatus] = useState('MIDI: Off');
   const [editorMarkers, setEditorMarkers] = useState<any[]>([]);
   const [showInspector, setShowInspector] = useState(false);
@@ -469,7 +471,6 @@ const App: React.FC = () => {
   const [seqLength, setSeqLength] = useState(16);
   
   const [inputs, setInputs] = useState<InputSource[]>([]);
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [midiInputs, setMidiInputs] = useState<any[]>([]);
   const [selectedMidiInput, setSelectedMidiInput] = useState<string>('all');
 
@@ -493,6 +494,8 @@ const App: React.FC = () => {
   const midiControllerRef = useRef<MIDIController | null>(null);
   const skipNextUpdateRef = useRef(false);
   const vultEditorRef = useRef<VultEditorHandle>(null);
+
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
 
   const parseVultCCs = useCallback((vultCode: string) => {
     const ccMap: Record<number, string> = {};
@@ -578,8 +581,11 @@ const App: React.FC = () => {
       );
       // MIDI init is deferred — browser requires a user gesture.
       // It is triggered by handleEnableMIDI or implicitly on first RUN press.
-      ae.getDevices().then(setAudioDevices);
+      ae.getDevices().then(devices => {
+        setAudioDevices(devices);
+      });
       ae.onRuntimeError(() => setStatus('Runtime Crash'));
+      ae.onAudioStatusUpdate(setAudioStatus);
     };
     startup();
     return () => { audioEngineRef.current.stop(); };
@@ -611,6 +617,9 @@ const App: React.FC = () => {
     const ae = audioEngineRef.current;
     if (ae.getIsPlaying()) { ae.stop(); setIsPlaying(false); }
     else {
+      // Create context synchronously inside click handler to appease Chrome Autoplay Policy
+      ae.initContextSync();
+      
       // Attempt MIDI init in the background — never block audio on MIDI failure
       if (midiControllerRef.current && !midiReady) {
         midiControllerRef.current.init().then(() => {
@@ -627,20 +636,34 @@ const App: React.FC = () => {
       }
       const result = await ae.updateCode(code);
       if (result.success) { setStatus('Running'); ae.setProbes(activeProbes); setEditorMarkers([]); }
-      else { setStatus('Compile Error'); const marker = parseVultError(result.error); if (marker) setEditorMarkers([marker]); }
+      else { setStatus('Compile Error'); setEditorMarkers(parseVultError(result)); }
       setIsPlaying(true);
     }
   };
 
-  const parseVultError = (errorStr: string) => {
-    const lineMatch = errorStr.match(/line (\d+)/i);
-    const colMatch = errorStr.match(/column (\d+)/i) || errorStr.match(/characters (\d+)/i);
-    if (lineMatch) {
-      const line = parseInt(lineMatch[1]);
-      const col = colMatch ? parseInt(colMatch[1]) : 1;
-      return { startLineNumber: line, endLineNumber: line, startColumn: col, endColumn: col + 1, message: errorStr.replace(/Errors in the program:\s*/, '').trim(), severity: 8 };
+  const parseVultError = (result: any) => {
+    let markers: any[] = [];
+    if (result.rawErrors && Array.isArray(result.rawErrors)) {
+      result.rawErrors.forEach((err: any) => {
+        if (err.row !== undefined && err.row !== null) {
+          const r = parseInt(err.row) + 1;
+          const c = parseInt(err.column) + 1;
+          markers.push({ startLineNumber: r, endLineNumber: r, startColumn: c, endColumn: c + 3, message: err.msg || err.text, severity: 8 });
+        }
+      });
     }
-    return null;
+    
+    if (markers.length === 0 && result.error) {
+       const errorStr = typeof result.error === 'string' ? result.error : '';
+       const lineMatch = errorStr.match(/line (\d+)/i);
+       const colMatch = errorStr.match(/column (\d+)/i) || errorStr.match(/characters (\d+)/i);
+       if (lineMatch) {
+         const line = parseInt(lineMatch[1]);
+         const col = colMatch ? parseInt(colMatch[1]) : 1;
+         markers.push({ startLineNumber: line, endLineNumber: line, startColumn: col, endColumn: col + 1, message: errorStr.replace(/Errors in the program:\s*/, '').trim(), severity: 8 });
+       }
+    }
+    return markers;
   };
 
   const handleCodeChange = async (value: string | undefined) => {
@@ -653,7 +676,7 @@ const App: React.FC = () => {
     setInputs(prev => (prev.length === newInputs.length && prev.every((v, i) => v.name === newInputs[i].name)) ? prev : newInputs);
     if (isPlaying) {
       const result = await audioEngineRef.current.updateCode(value);
-      if (!result.success) { setStatus('Compile Error'); const marker = parseVultError(result.error); if (marker) setEditorMarkers([marker]); }
+      if (!result.success) { setStatus('Compile Error'); setEditorMarkers(parseVultError(result)); }
       else { setStatus('Running'); setEditorMarkers([]); }
     }
   };
@@ -759,8 +782,7 @@ const App: React.FC = () => {
         if (result.success) setStatus('Running');
         else {
           setStatus('Compile Error');
-          const m = parseVultError(result.error);
-          if (m) setEditorMarkers([m]);
+          setEditorMarkers(parseVultError(result));
         }
       });
     } else {
@@ -781,7 +803,7 @@ const App: React.FC = () => {
     setCode(newCode);
     const result = await audioEngineRef.current.updateCode(newCode);
     if (result.success) { saveSnapshot("Agent Update"); setDiffMode(true); setEditorMarkers([]); setStatus('Trial Compile OK'); return { success: true, message: "Code compiled successfully. Waiting for user to ACCEPT changes." }; }
-    else { setDiffMode(false); const marker = parseVultError(result.error); if (marker) setEditorMarkers([marker]); setStatus('Compile Error'); return { success: false, error: result.error }; }
+    else { setDiffMode(false); setEditorMarkers(parseVultError(result)); setStatus('Compile Error'); return { success: false, error: result.error }; }
   };
 
   const handleAcceptDiff = async () => {
@@ -791,13 +813,15 @@ const App: React.FC = () => {
     if (isPlaying) {
       const result = await audioEngineRef.current.updateCode(newCode);
       if (result.success) { setStatus('Running'); setEditorMarkers([]); }
-      else { setStatus('Compile Error'); const marker = parseVultError(result.error); if (marker) setEditorMarkers([marker]); }
+      else { setStatus('Compile Error'); setEditorMarkers(parseVultError(result)); }
     }
     setDiffMode(false);
     setOriginalCode('');
   };
 
   const handleRejectDiff = () => { setCode(originalCode); setDiffMode(false); setOriginalCode(''); };
+
+
 
   // Improved Resizing logic
   const startResizing = (setter: React.Dispatch<React.SetStateAction<number>>, min: number, max: number) => (e: React.MouseEvent) => {
@@ -943,6 +967,15 @@ const App: React.FC = () => {
             </select>
           </div>
           <div className="spacer" />
+          <div className="audio-metrics-badge" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', color: '#888', marginRight: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: audioStatus.state === 'running' ? '#00ff00' : '#ff4444' }} />
+              <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{audioStatus.state}</span>
+            </div>
+            {audioStatus.sampleRate > 0 && (
+              <span style={{ opacity: 0.6 }}>{audioStatus.sampleRate / 1000}kHz</span>
+            )}
+          </div>
           <div className={`status-badge ${(status === 'Compile Error' || status === 'Runtime Crash') ? 'error' : ''}`}><Activity size={14} />{status}</div>
         </div>
 
@@ -1203,6 +1236,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

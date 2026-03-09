@@ -57,6 +57,9 @@ class VultProcessor extends AudioWorkletProcessor {
     this.isCrashed = false;
     this.lastError = null;
 
+    // Deferred code compilation — stored here by onmessage, applied in process()
+    this._pendingCode = null;
+
     // Sequencer
     this.seqState = {
       isPlaying: false,
@@ -71,37 +74,11 @@ class VultProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (event) => {
       const { type, data } = event.data;
       if (type === 'updateCode') {
-        try {
-          this.vultInstance = null;
-          this.isCrashed = false;
-          this.errorCount = 0;
-          
-          const body = vultRuntime + "\n" + 
-                       "var exports = {};\n" + 
-                       data.jsCode + "\n" +
-                       "if (typeof vultProcess !== 'undefined') return vultProcess;\n" +
-                       "if (typeof VultProcess !== 'undefined') return VultProcess;\n" +
-                       "if (typeof exports !== 'undefined' && exports.vultProcess) return exports.vultProcess;\n" +
-                       "if (typeof exports !== 'undefined' && exports.VultProcess) return exports.VultProcess;\n" +
-                       "if (typeof Vult !== 'undefined') return Vult;\n" +
-                       "return null;";
-          
-          const factory = new Function(body);
-          const VultConstructor = factory();
-          if (!VultConstructor) throw new Error("Vult process class not found in compiled JS");
-          
-          const instance = new VultConstructor();
-          instance._processFn = instance.liveProcess || instance.process;
-          const initFn = instance.liveDefault || instance.default;
-          if (typeof initFn === 'function') initFn.call(instance);
-          
-          this.vultInstance = instance;
-          this.discoverVariables();
-          this.port.postMessage({ type: 'status', success: true });
-        } catch (err) {
-          console.error("[Worklet] Update Error:", err);
-          this.port.postMessage({ type: 'status', success: false, error: err.toString() });
-        }
+        // IMPORTANT: Do NOT compile (new Function) here in onmessage.
+        // In Chrome, onmessage shares the audio render thread. If new Function()
+        // takes >2.9ms to parse/JIT the VS-80 code, it misses the audio block
+        // deadline and Chrome fires 'renderer error'. Instead, defer to process().
+        this._pendingCode = data.jsCode;
       } else if (type === 'setSources') {
         this.sources = data.sources || [];
         // Only re-init if lengths changed to prevent phase reset on simple updates
@@ -221,6 +198,49 @@ class VultProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs, parameters) {
+    // Apply deferred code compilation (moved here from onmessage to avoid
+    // blocking the render thread — see updateCode handler comment).
+    if (this._pendingCode !== null) {
+      const jsCode = this._pendingCode;
+      this._pendingCode = null;
+      try {
+        this.vultInstance = null;
+        this.isCrashed = false;
+        this.errorCount = 0;
+
+        const body = vultRuntime + "\n" +
+                     "var exports = {};\n" +
+                     jsCode + "\n" +
+                     "if (typeof vultProcess !== 'undefined') return vultProcess;\n" +
+                     "if (typeof VultProcess !== 'undefined') return VultProcess;\n" +
+                     "if (typeof exports !== 'undefined' && exports.vultProcess) return exports.vultProcess;\n" +
+                     "if (typeof exports !== 'undefined' && exports.VultProcess) return exports.VultProcess;\n" +
+                     "if (typeof Vult !== 'undefined') return Vult;\n" +
+                     "return null;";
+
+        const factory = new Function(body);
+        const VultConstructor = factory();
+        if (!VultConstructor) throw new Error("Vult process class not found in compiled JS");
+
+        const instance = new VultConstructor();
+        instance._processFn = instance.liveProcess || instance.process;
+        const initFn = instance.liveDefault || instance.default;
+        if (typeof initFn === 'function') initFn.call(instance);
+
+        this.vultInstance = instance;
+        this.discoverVariables();
+        this.port.postMessage({ type: 'status', success: true });
+      } catch (err) {
+        console.error("[Worklet] Update Error:", err);
+        this.port.postMessage({ type: 'status', success: false, error: err.toString() });
+      }
+      // Output silence for this block while the new instance settles
+      const outputL = outputs[0] && outputs[0][0] ? outputs[0][0] : null;
+      const outputR = outputs[0] && outputs[0][1] ? outputs[0][1] : outputL;
+      if (outputL) for (let i = 0; i < outputL.length; i++) { outputL[i] = 0; if (outputR) outputR[i] = 0; }
+      return true;
+    }
+
     const outputL = outputs[0] && outputs[0][0] ? outputs[0][0] : null;
     const outputR = outputs[0] && outputs[0][1] ? outputs[0][1] : outputL;
     if (!outputL) return true;

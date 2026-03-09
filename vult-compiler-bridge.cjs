@@ -142,7 +142,23 @@ process.stdin.on('end', async () => {
                 jsCode = compiler.generateJSCode(code + "\n" + stubs);
             }
             if (jsCode.includes("Errors in the program") || jsCode.includes("Error:")) {
-                process.stdout.write(JSON.stringify({ errors: [{ msg: jsCode }] }));
+                let structured = [];
+                try {
+                    structured = compiler.checkCode(code);
+                } catch(e) {}
+                
+                if (structured && structured.length > 0) {
+                    process.stdout.write(JSON.stringify({
+                        errors: structured.map(err => ({
+                            msg: err.raw || err.text,
+                            row: err.row !== undefined ? parseInt(err.row) : null,
+                            column: err.column !== undefined ? parseInt(err.column) : null,
+                            type: err.type || 'error'
+                        }))
+                    }));
+                } else {
+                    process.stdout.write(JSON.stringify({ errors: [{ msg: jsCode }] }));
+                }
             } else {
                 process.stdout.write(JSON.stringify({ code: jsCode, errors: [] }));
             }
