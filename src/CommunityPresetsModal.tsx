@@ -150,10 +150,10 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
               <div style={{ padding: '10px 20px', fontSize: '10px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>Tags</div>
               <div style={{ padding: '10px 20px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {tagsToShow.map(tag => (
-                  <button key={tag} onClick={() => setActiveTag(tag)} style={{
-                    background: activeTag === tag ? 'rgba(255,204,0,0.2)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${activeTag === tag ? 'rgba(255,204,0,0.4)' : 'rgba(255,255,255,0.1)'}`,
-                    borderRadius: '4px', padding: '4px 8px', color: activeTag === tag ? '#ffcc00' : '#888', fontSize: '10px',
+                  <button key={tag} onClick={() => handleTagClick(tag)} style={{
+                    background: activeTags.includes(tag) ? 'rgba(255,204,0,0.2)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${activeTags.includes(tag) ? 'rgba(255,204,0,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '4px', padding: '4px 8px', color: activeTags.includes(tag) ? '#ffcc00' : '#888', fontSize: '10px',
                     fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s'
                   }}>{tag}</button>
                 ))}
