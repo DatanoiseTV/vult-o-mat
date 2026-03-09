@@ -470,6 +470,11 @@ const App: React.FC = () => {
   const [midiInputs, setMidiInputs] = useState<any[]>([]);
   const [selectedMidiInput, setSelectedMidiInput] = useState<string>('all');
 
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportTarget, setExportTarget] = useState('c');
+  const [exportJavaPrefix, setExportJavaPrefix] = useState('com.example');
+  const [exportStatus, setExportStatus] = useState('');
+
   // UI States
   const [labHeight, setLabHeight] = useState(250);
   const [activeLabTab, setActiveLabTab] = useState<'lab' | 'seq' | 'midi'>('lab');
@@ -651,21 +656,45 @@ const App: React.FC = () => {
     a.click();
   };
 
-  const handleExportCPP = async () => {
-    setStatus('Generating C++...');
+  const EXPORT_OPTIONS: { value: string; label: string; ext: string; mime: string }[] = [
+    { value: 'c',        label: 'C / C++',              ext: '.cpp',  mime: 'text/x-c' },
+    { value: 'c-pd',     label: 'C / C++ (Pure Data)',  ext: '.cpp',  mime: 'text/x-c' },
+    { value: 'c-teensy', label: 'C / C++ (Teensy)',     ext: '.cpp',  mime: 'text/x-c' },
+    { value: 'js',       label: 'JavaScript',           ext: '.js',   mime: 'text/javascript' },
+    { value: 'lua',      label: 'Lua',                  ext: '.lua',  mime: 'text/x-lua' },
+    { value: 'java',     label: 'Java',                 ext: '.java', mime: 'text/x-java' },
+  ];
+
+  const handleExport = async () => {
+    const opt = EXPORT_OPTIONS.find(o => o.value === exportTarget);
+    if (!opt) return;
+    setExportStatus('Generating...');
     try {
-      const response = await fetch('/api/compile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, target: 'cpp' }) });
+      const body: Record<string, string> = { code, target: exportTarget };
+      if (exportTarget === 'java') body.javaPrefix = exportJavaPrefix;
+      const response = await fetch('/api/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
       const data = await response.json();
       if (data.code) {
-        const blob = new Blob([data.code], { type: 'text/plain' });
+        const blob = new Blob([data.code], { type: opt.mime });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${projectName.replace(/\s+/g, '_')}.cpp`;
+        a.download = `${projectName.replace(/\s+/g, '_')}${opt.ext}`;
         a.click();
-        setStatus('C++ Exported');
-      } else { setStatus('Export Failed'); }
-    } catch (e) { setStatus('Network Error'); }
+        URL.revokeObjectURL(url);
+        setExportStatus('Done');
+        setTimeout(() => { setExportStatus(''); setShowExportModal(false); }, 800);
+      } else {
+        const msg = data.errors?.[0]?.msg || 'Export failed';
+        setExportStatus('Error: ' + msg.substring(0, 80));
+      }
+    } catch (e) {
+      setExportStatus('Network error');
+    }
   };
 
   const handleLoadCode = useCallback((newCode: string) => {
@@ -772,7 +801,7 @@ const App: React.FC = () => {
         <div className="nav-item active" title="IDE"><Cpu size={18} /></div>
         <div className="nav-item" title="Save" onClick={handleSave}><Save size={18} /></div>
         <div className="nav-item" title="Download Vult" onClick={handleDownload}><Download size={18} /></div>
-        <div className="nav-item" title="Export C++" onClick={handleExportCPP}><Code2 size={18} /></div>
+        <div className={`nav-item ${showExportModal ? 'active' : ''}`} title="Export Code" onClick={() => { setShowExportModal(!showExportModal); setExportStatus(''); }}><Code2 size={18} /></div>
         <div className={`nav-item ${showHistory ? 'active' : ''}`} title="History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); }}><History size={18} /></div>
         <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); }}><Database size={18} /></div>
         <div className="spacer" />
@@ -954,6 +983,88 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showExportModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}>
+          <div style={{
+            background: '#1a1a1a', border: '1px solid #333', borderRadius: '6px',
+            padding: '24px', width: '340px', display: 'flex', flexDirection: 'column', gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ color: '#ffcc00', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Export Code</span>
+              <span style={{ color: '#555', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }} onClick={() => setShowExportModal(false)}>×</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Target Language</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {EXPORT_OPTIONS.map(opt => (
+                  <label key={opt.value} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px',
+                    borderRadius: '4px', cursor: 'pointer',
+                    background: exportTarget === opt.value ? '#252525' : 'transparent',
+                    border: `1px solid ${exportTarget === opt.value ? '#444' : 'transparent'}`,
+                  }}>
+                    <input
+                      type="radio"
+                      name="exportTarget"
+                      value={opt.value}
+                      checked={exportTarget === opt.value}
+                      onChange={() => setExportTarget(opt.value)}
+                      style={{ accentColor: '#ffcc00' }}
+                    />
+                    <span style={{ color: exportTarget === opt.value ? '#e0e0e0' : '#888', fontSize: '13px' }}>{opt.label}</span>
+                    <span style={{ marginLeft: 'auto', color: '#444', fontSize: '11px', fontFamily: 'monospace' }}>{opt.ext}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {exportTarget === 'java' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ color: '#888', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Java Package Prefix</label>
+                <input
+                  type="text"
+                  value={exportJavaPrefix}
+                  onChange={e => setExportJavaPrefix(e.target.value)}
+                  placeholder="com.example"
+                  style={{
+                    background: '#111', border: '1px solid #333', borderRadius: '4px',
+                    color: '#e0e0e0', padding: '7px 10px', fontSize: '13px', fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+            )}
+
+            {exportStatus && (
+              <div style={{
+                padding: '8px 10px', borderRadius: '4px', fontSize: '12px',
+                background: exportStatus.startsWith('Error') ? '#2a1515' : '#151a15',
+                color: exportStatus.startsWith('Error') ? '#ff6666' : '#66cc66',
+                border: `1px solid ${exportStatus.startsWith('Error') ? '#5a2020' : '#205a20'}`,
+                wordBreak: 'break-word'
+              }}>{exportStatus}</div>
+            )}
+
+            <button
+              onClick={handleExport}
+              disabled={exportStatus === 'Generating...'}
+              style={{
+                background: '#ffcc00', color: '#000', border: 'none', borderRadius: '4px',
+                padding: '9px 0', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px',
+                textTransform: 'uppercase', cursor: exportStatus === 'Generating...' ? 'not-allowed' : 'pointer',
+                opacity: exportStatus === 'Generating...' ? 0.6 : 1
+              }}
+            >
+              {exportStatus === 'Generating...' ? 'Generating...' : 'Export'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
