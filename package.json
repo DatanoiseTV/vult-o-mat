@@ -1,8 +1,8 @@
 {
-  "name": "vultlab",
+  "name": "dsplab",
   "private": true,
   "version": "1.0.0",
-  "description": "A professional-grade Web-based Vult DSP IDE and Prototyping Studio",
+  "description": "A professional-grade Web-based DSP IDE and Prototyping Studio",
   "author": "syso (DatanoiseTV)",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",

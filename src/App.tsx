@@ -386,7 +386,7 @@ and default() {
 
 const SYSTEM_PROMPT = `
 Role: Senior DSP Research Scientist and Mentor. 
-Environment: VultLab – A Professional Real-time IDE with Live Telemetry, 12 CC Knobs (30-41), and 6-voice polyphony.
+Environment: DSPLab – A Professional Real-time IDE with Live Telemetry, 12 CC Knobs (30-41), and 6-voice polyphony.
 
 STRICT VULT LANGUAGE CONSTRAINTS:
 1. DO NOT use 'and', 'or', 'not'. Use C-style '&&', '||', '!' operators ONLY.
