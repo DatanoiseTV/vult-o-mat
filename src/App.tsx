@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, AudioWaveform, Code2, History, Music, Keyboard, Globe, Search } from 'lucide-react';
+import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, AudioWaveform, Code2, History, Music, Keyboard, Globe, Search, Code, Wrench, HardDrive, PackageOpen } from 'lucide-react';
 import { AudioEngine } from './AudioEngine';
 import type { InputSource, SourceType } from './AudioEngine';
 import { MIDIController } from './MIDIController';
@@ -13,7 +13,7 @@ import MultiScopeView from './MultiScopeView';
 import Sequencer from './Sequencer';
 import type { Step } from './Sequencer';
 import { Knob } from './Knob';
-import CommunityPresets from './CommunityPresets';
+import CommunityPresetsModal from './CommunityPresetsModal';
 import { useCommunityPresets, loadPresetCode } from './useCommunityPresets';
 import './App.css';
 
@@ -456,7 +456,6 @@ const App: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [status, setStatus] = useState('Idle');
   const [audioStatus, setAudioStatus] = useState<{ state: string; sampleRate: number }>({ state: 'suspended', sampleRate: 0 });
-  const [midiStatus, setMidiStatus] = useState('MIDI: Off');
   const [editorMarkers, setEditorMarkers] = useState<any[]>([]);
   const [showInspector, setShowInspector] = useState(false);
   const [activeProbes, setActiveProbes] = useState<string[]>([]);
@@ -588,11 +587,32 @@ const App: React.FC = () => {
 
       const ae = audioEngineRef.current;
       midiControllerRef.current = new MIDIController(
-        (n, v) => ae.sendNoteOn(n, v),
-        (n) => ae.sendNoteOff(n),
-        (c, v) => ae.sendControlChange(c, v),
+        (n, v) => {
+          ae.sendNoteOn(n, v);
+          if (midiNoteLedRef.current) {
+            midiNoteLedRef.current.style.background = '#00ff00'; // Green for Note On
+            if (midiPulseTimeouts.current.note) clearTimeout(midiPulseTimeouts.current.note);
+            midiPulseTimeouts.current.note = setTimeout(() => { if (midiNoteLedRef.current) midiNoteLedRef.current.style.background = '#333'; }, 100);
+          }
+        },
+        (n) => {
+          ae.sendNoteOff(n);
+          if (midiNoteLedRef.current) {
+            midiNoteLedRef.current.style.background = '#ff4444'; // Red for Note Off
+            if (midiPulseTimeouts.current.note) clearTimeout(midiPulseTimeouts.current.note);
+            midiPulseTimeouts.current.note = setTimeout(() => { if (midiNoteLedRef.current) midiNoteLedRef.current.style.background = '#333'; }, 100);
+          }
+        },
+        (c, v) => {
+          ae.sendControlChange(c, v);
+          if (midiCcLedRef.current) {
+            midiCcLedRef.current.style.background = '#ffcc00'; // Yellow for CC
+            if (midiPulseTimeouts.current.cc) clearTimeout(midiPulseTimeouts.current.cc);
+            midiPulseTimeouts.current.cc = setTimeout(() => { if (midiCcLedRef.current) midiCcLedRef.current.style.background = '#333'; }, 100);
+          }
+        },
         (s) => {
-          setMidiStatus(s);
+          // Midi status string no longer displayed, but still update inputs
           setMidiInputs(midiControllerRef.current?.getInputs() || []);
         }
       );
@@ -930,53 +950,86 @@ const App: React.FC = () => {
         {isMobile ? (
           <>
             <div className={`nav-item ${mobileView === 'editor' ? 'active' : ''}`} onClick={() => setMobileView('editor')}>
-              <Cpu size={17} /><span className="nav-label">Editor</span>
+              <Code size={20} /><span className="nav-label">Editor</span>
             </div>
             <div className={`nav-item ${mobileView === 'lab' ? 'active' : ''}`} onClick={() => setMobileView('lab')}>
-              <Sliders size={17} /><span className="nav-label">Lab</span>
+              <Sliders size={20} /><span className="nav-label">Lab</span>
             </div>
             <div className={`nav-item ${mobileView === 'panels' ? 'active' : ''}`} onClick={() => setMobileView('panels')}>
-              <Activity size={17} /><span className="nav-label">Panels</span>
+              <Activity size={20} /><span className="nav-label">Panels</span>
             </div>
           </>
         ) : (
           <>
-            <div className="nav-item active" title="IDE">
-              <Cpu size={17} /><span className="nav-label">IDE</span>
+            <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); setShowCommunity(false); setShowExportModal(false); }}>
+              <Wrench size={22} /><span className="nav-label">Inspect</span>
             </div>
-            <div className="nav-item" title="Save" onClick={handleSave}>
-              <Save size={17} /><span className="nav-label">Save</span>
+            
+            <div className={`nav-item ${showHistory ? 'active' : ''}`} title="Version History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); setShowCommunity(false); setShowExportModal(false); }}>
+              <History size={22} /><span className="nav-label">History</span>
             </div>
+
+            <div className="spacer" style={{ flex: 1 }} />
+
+            <div className={`nav-item ${showCommunity ? 'active' : ''}`} title="Community Presets" onClick={() => { setShowCommunity(!showCommunity); setShowHistory(false); setShowInspector(false); setShowExportModal(false); }}>
+              <PackageOpen size={22} /><span className="nav-label">Library</span>
+            </div>
+
             <div className="nav-item" title="Download .vult source" onClick={handleDownload}>
-              <Download size={17} /><span className="nav-label">Source</span>
+              <HardDrive size={22} /><span className="nav-label">Save</span>
             </div>
-            <div className={`nav-item ${showExportModal ? 'active' : ''}`} title="Export Code" onClick={() => { setShowExportModal(!showExportModal); setExportStatus(''); }}>
-              <Code2 size={17} /><span className="nav-label">Export</span>
-            </div>
-            <div className={`nav-item ${showCommunity ? 'active' : ''}`} title="Community Presets" onClick={() => { setShowCommunity(!showCommunity); setShowHistory(false); setShowInspector(false); }}>
-              <Globe size={17} /><span className="nav-label">Community</span>
-            </div>
-            <div className={`nav-item ${showHistory ? 'active' : ''}`} title="Version History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); setShowCommunity(false); }}>
-              <History size={17} /><span className="nav-label">History</span>
-            </div>
-            <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); setShowCommunity(false); }}>
-              <Search size={17} /><span className="nav-label">Monitoring</span>
+
+            <div className={`nav-item ${showExportModal ? 'active' : ''}`} title="Export Code" onClick={() => { setShowExportModal(!showExportModal); setExportStatus(''); setShowHistory(false); setShowCommunity(false); setShowInspector(false); }}>
+              <Code2 size={22} /><span className="nav-label">Export</span>
             </div>
           </>
         )}
         <div className="spacer" />
-        {!isMobile && <div className="midi-status-circle" title={midiStatus} style={{ width: '8px', height: '8px', borderRadius: '50%', background: midiReady ? '#00ff00' : '#555', marginBottom: '20px' }} />}
-      </div>
+        {/* No longer showing midi-status-circle here */} 
+        </div>
 
-      <div className="main-content">
+        <div className="main-content">
         <div className="toolbar">
-          <input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} style={{ background: 'transparent', border: 'none', color: '#ffcc00', fontWeight: 'bold', width: '120px' }} />
+          <input
+            type="text"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            style={{
+              background: 'rgba(0,0,0,0.4)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: '#ffcc00',
+              fontWeight: '800',
+              width: '140px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              outline: 'none',
+              fontSize: '12px',
+              transition: 'all 0.2s',
+              boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#ffcc00'}
+            onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+          />
           <button className={`play-btn ${isPlaying ? 'playing' : ''}`} onClick={handleTogglePlay}>
             {isPlaying ? <Square size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
             {isPlaying ? 'STOP' : 'RUN'}
           </button>
-          <div className="divider" />
-          <div className="control-group">
+
+          {!isMobile && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: '10px' }}>
+              <div ref={midiNoteLedRef} style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#333', transition: 'background 0.05s' }} title="MIDI Note Activity" />
+              <div ref={midiCcLedRef} style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#333', transition: 'background 0.05s' }} title="MIDI CC Activity" />
+            </div>
+          )}
+
+          {isPlaying && (
+            <div className="running-indicator" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '10px' }}>
+              <div className="led-blink" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00ffcc', boxShadow: '0 0 8px #00ffcc' }} />
+              <span style={{ fontSize: '10px', color: '#00ffcc', fontWeight: 'bold', letterSpacing: '1px' }}>ACTIVE</span>
+            </div>
+          )}
+
+          <div className="divider" />          <div className="control-group">
             <span className="label">PRESET</span>
             <select value="" onChange={async (e) => {
               const val = e.target.value;
@@ -1030,24 +1083,9 @@ const App: React.FC = () => {
             </select>
           </div>
           <div className="spacer" />
-          <div className="midi-leds" style={{ display: 'flex', gap: '8px', marginRight: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', fontWeight: 'bold', color: '#666' }}>
-              <div ref={midiNoteLedRef} style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#333', boxShadow: 'none', transition: 'background 0.05s' }} /> NOTE
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', fontWeight: 'bold', color: '#666' }}>
-              <div ref={midiCcLedRef} style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#333', boxShadow: 'none', transition: 'background 0.05s' }} /> CC
-            </div>
-          </div>
-          <div className="audio-metrics-badge" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', color: '#888', marginRight: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: audioStatus.state === 'running' ? '#00ff00' : '#ff4444' }} />
-              <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{audioStatus.state}</span>
-            </div>
-            {audioStatus.sampleRate > 0 && (
-              <span style={{ opacity: 0.6 }}>{audioStatus.sampleRate / 1000}kHz</span>
-            )}
-          </div>
-          <div className={`status-badge ${(status === 'Compile Error' || status === 'Runtime Crash') ? 'error' : ''}`}><Activity size={14} />{status}</div>
+          {((status === 'Idle' && !isPlaying) || status.includes('Error') || status.includes('Crash')) && (
+            <div className={`status-badge ${(status === 'Compile Error' || status === 'Runtime Crash') ? 'error' : ''}`} style={{ marginLeft: 'auto' }}><Activity size={14} />{status}</div>
+          )}
         </div>
 
         <div className="editor-layout">
@@ -1202,7 +1240,7 @@ const App: React.FC = () => {
                     {!midiReady && (
                       <div style={{ padding: '12px 14px', borderBottom: '1px solid #222', display: 'flex', alignItems: 'center', gap: '10px', background: '#151515' }}>
                         <div style={{ flex: 1, fontSize: '11px', color: '#888' }}>
-                          {midiStatus.startsWith('MIDI:') ? midiStatus : 'MIDI not yet enabled — browser requires a click first.'}
+                          MIDI not yet enabled — browser requires a click first.
                         </div>
                         <button
                           onClick={handleEnableMIDI}
@@ -1249,18 +1287,6 @@ const App: React.FC = () => {
                     ))}
                   </div>
                 </div>
-              ) : showCommunity ? (
-                <CommunityPresets
-                  onLoad={(code, name) => {
-                    handleLoadCode(code);
-                    setProjectName(name);
-                    setShowCommunity(false);
-                  }}
-                  onInsert={(code) => {
-                    vultEditorRef.current?.insertAtCursor(code);
-                    setShowCommunity(false);
-                  }}
-                />
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                   <div style={{ flex: 1, minHeight: 0 }}>
@@ -1305,7 +1331,7 @@ const App: React.FC = () => {
                     borderRadius: '4px', cursor: 'pointer',
                     background: exportTarget === opt.value ? '#252525' : 'transparent',
                     border: `1px solid ${exportTarget === opt.value ? '#444' : 'transparent'}`,
-                  }}>
+                  }}> 
                     <input
                       type="radio"
                       name="exportTarget"
@@ -1363,8 +1389,23 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {showCommunity && (
+        <CommunityPresetsModal
+          onClose={() => setShowCommunity(false)}
+          onLoad={(code, name) => {
+            handleLoadCode(code);
+            setProjectName(name);
+            setShowCommunity(false);
+          }}
+          onInsert={(code) => {
+            vultEditorRef.current?.insertAtCursor(code);
+            // Do not close modal on insert, allow multiple inserts
+          }}
+          communityGroups={communityGroups}
+          communityLoading={communityLoading}
+        />
+      )}
     </div>
   );
 };
-
 export default App;
