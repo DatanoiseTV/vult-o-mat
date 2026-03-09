@@ -474,6 +474,7 @@ const App: React.FC = () => {
   const [selectedMidiInput, setSelectedMidiInput] = useState<string>('all');
 
   const [showCommunity, setShowCommunity] = useState(false);
+  const [midiReady, setMidiReady] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportTarget, setExportTarget] = useState('c');
   const [exportJavaPrefix, setExportJavaPrefix] = useState('com.example');
@@ -568,10 +569,13 @@ const App: React.FC = () => {
         (n, v) => ae.sendNoteOn(n, v),
         (n) => ae.sendNoteOff(n),
         (c, v) => ae.sendControlChange(c, v),
-        (s) => setMidiStatus(s)
+        (s) => {
+          setMidiStatus(s);
+          setMidiInputs(midiControllerRef.current?.getInputs() || []);
+        }
       );
-      await midiControllerRef.current.init();
-      setMidiInputs(midiControllerRef.current?.getInputs() || []);
+      // MIDI init is deferred — browser requires a user gesture.
+      // It is triggered by handleEnableMIDI or implicitly on first RUN press.
       ae.getDevices().then(setAudioDevices);
       ae.onRuntimeError(() => setStatus('Runtime Crash'));
     };
@@ -586,10 +590,26 @@ const App: React.FC = () => {
 
   useEffect(() => { audioEngineRef.current.setSources(inputs); }, [inputs]);
 
+  // MIDI must be initialised from a user gesture — call this on first interaction
+  const handleEnableMIDI = async () => {
+    if (!midiControllerRef.current || midiReady) return;
+    await midiControllerRef.current.init();
+    const ready = midiControllerRef.current.isInitialized();
+    setMidiReady(ready);
+    setMidiInputs(midiControllerRef.current.getInputs());
+  };
+
   const handleTogglePlay = async () => {
     const ae = audioEngineRef.current;
     if (ae.getIsPlaying()) { ae.stop(); setIsPlaying(false); }
     else {
+      // Init MIDI on first play (user gesture) if not already done
+      if (midiControllerRef.current && !midiReady) {
+        await midiControllerRef.current.init();
+        const ready = midiControllerRef.current.isInitialized();
+        setMidiReady(ready);
+        setMidiInputs(midiControllerRef.current.getInputs());
+      }
       await ae.start();
       const result = await ae.updateCode(code);
       if (result.success) { setStatus('Running'); ae.setProbes(activeProbes); setEditorMarkers([]); }
@@ -828,7 +848,7 @@ const App: React.FC = () => {
           <Search size={17} /><span className="nav-label">Monitoring</span>
         </div>
         <div className="spacer" />
-        <div className="midi-status-circle" title={midiStatus} style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00ff00', marginBottom: '20px' }} />
+        <div className="midi-status-circle" title={midiStatus} style={{ width: '8px', height: '8px', borderRadius: '50%', background: midiReady ? '#00ff00' : '#555', marginBottom: '20px' }} />
       </div>
 
       <div className="main-content">
@@ -992,6 +1012,19 @@ const App: React.FC = () => {
                 )}
                 {activeLabTab === 'midi' && (
                   <div className="virtual-midi-panel" style={{ height: '100%', overflowY: 'auto' }}>
+                    {!midiReady && (
+                      <div style={{ padding: '12px 14px', borderBottom: '1px solid #222', display: 'flex', alignItems: 'center', gap: '10px', background: '#151515' }}>
+                        <div style={{ flex: 1, fontSize: '11px', color: '#888' }}>
+                          {midiStatus.startsWith('MIDI:') ? midiStatus : 'MIDI not yet enabled — browser requires a click first.'}
+                        </div>
+                        <button
+                          onClick={handleEnableMIDI}
+                          style={{ background: '#ffcc00', color: '#000', border: 'none', borderRadius: '3px', padding: '5px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0 }}
+                        >
+                          Enable MIDI
+                        </button>
+                      </div>
+                    )}
                     <VirtualMIDI 
                       onCC={(cc, val) => audioEngineRef.current.sendControlChange(cc, val, 0)} 
                       onNoteOn={(note, vel) => audioEngineRef.current.sendNoteOn(note, vel, 0)} 

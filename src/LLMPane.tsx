@@ -1,5 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+
+export interface LLMPaneHandle {
+  /** Programmatically send a message to the agent, as if the user typed it. */
+  sendMessage: (text: string) => void;
+}
 
 interface LLMPaneProps {
   currentCode: string;
@@ -33,11 +38,11 @@ type MessagePart = {
 };
 type Message = { role: 'user' | 'model', parts: MessagePart[] };
 
-const LLMPane: React.FC<LLMPaneProps> = ({ 
+const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({ 
   currentCode, onUpdateCode, onSetKnob, onTriggerGenerator, 
   onConfigureInput, onLoadPreset, onSaveSnapshot, onSetProbes, onConfigureSequencer, 
   getPresets, getSequencerState, getTelemetry, getTelemetryHistory, getSpectrum, getPeakFrequencies, getHarmonics, getSignalQuality, getAudioMetrics, systemPrompt 
-}) => {
+}, llmRef) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isInspirationLoading, setIsInspirationLoading] = useState(false);
@@ -71,6 +76,30 @@ const LLMPane: React.FC<LLMPaneProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const askUserResolverRef = useRef<((val: string) => void) | null>(null);
   const stopFlagRef = useRef(false);
+
+  // Expose sendMessage so parent can trigger agent programmatically
+  // (e.g. from Monaco editor right-click actions)
+  useImperativeHandle(llmRef, () => ({
+    sendMessage(text: string) {
+      if (isLoading) return;
+      setInput('');
+      setIsLoading(true);
+      addDisplayMsg('user', text);
+      if (provider === 'gemini' && !apiKey) {
+        addDisplayMsg('assistant', "API key missing. Open Settings to add your key.");
+        setIsLoading(false);
+        return;
+      }
+      const newMsg: Message = { role: 'user', parts: [{ text }] };
+      // messages state may be stale here — use functional ref pattern
+      setMessages(prev => {
+        const updated = [...prev, newMsg];
+        // kick off agent loop after state settles
+        setTimeout(() => processAgentLoop(updated), 0);
+        return updated;
+      });
+    },
+  }));
 
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
@@ -1605,6 +1634,7 @@ const LLMPane: React.FC<LLMPaneProps> = ({
       </div>
     </div>
   );
-};
+});
 
+LLMPane.displayName = 'LLMPane';
 export default LLMPane;

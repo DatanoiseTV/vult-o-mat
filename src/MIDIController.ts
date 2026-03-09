@@ -7,6 +7,7 @@ export class MIDIController {
   private onCC: (cc: number, val: number) => void;
   private onStatusChange: (status: string) => void;
   private selectedInputId: string | null = null;
+  private initialized = false;
 
   constructor(
     onNoteOn: (note: number, velocity: number) => void,
@@ -20,33 +21,52 @@ export class MIDIController {
     this.onStatusChange = onStatusChange;
   }
 
-  public async init() {
+  public isInitialized(): boolean {
+    return this.initialized;
+  }
+
+  // Must be called from a user-gesture handler (click, keydown, etc.)
+  public async init(): Promise<void> {
+    if (this.initialized) return;
     try {
-      await WebMidi.enable();
-      this.onStatusChange(`MIDI Enabled: ${WebMidi.inputs.length} inputs found`);
+      // Request MIDI access explicitly — required in browsers without persistent permission
+      if (navigator.requestMIDIAccess) {
+        await navigator.requestMIDIAccess({ sysex: false });
+      }
+      await WebMidi.enable({ sysex: false });
+      this.initialized = true;
+      this.onStatusChange(`MIDI: ${WebMidi.inputs.length} input${WebMidi.inputs.length !== 1 ? 's' : ''}`);
       this.setupListeners();
 
       WebMidi.addListener('connected', () => {
-        this.onStatusChange(`MIDI Input Connected. Total: ${WebMidi.inputs.length}`);
+        this.onStatusChange(`MIDI: ${WebMidi.inputs.length} input${WebMidi.inputs.length !== 1 ? 's' : ''}`);
         this.setupListeners();
       });
-      
+
       WebMidi.addListener('disconnected', () => {
-        this.onStatusChange(`MIDI Input Disconnected. Total: ${WebMidi.inputs.length}`);
+        this.onStatusChange(`MIDI: ${WebMidi.inputs.length} input${WebMidi.inputs.length !== 1 ? 's' : ''}`);
         this.setupListeners();
       });
     } catch (err: any) {
-      this.onStatusChange(`MIDI Error: ${err.message}`);
+      this.initialized = false;
+      const msg = err?.message ?? String(err);
+      if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('permission')) {
+        this.onStatusChange('MIDI: Permission denied');
+      } else if (msg.toLowerCase().includes('not supported') || msg.toLowerCase().includes('no midi')) {
+        this.onStatusChange('MIDI: Not supported');
+      } else {
+        this.onStatusChange(`MIDI: ${msg}`);
+      }
     }
   }
 
-  public getInputs() {
-    return WebMidi.inputs;
+  public getInputs(): Input[] {
+    return this.initialized ? WebMidi.inputs : [];
   }
 
   public setInput(id: string | null) {
     this.selectedInputId = id;
-    this.setupListeners();
+    if (this.initialized) this.setupListeners();
   }
 
   private setupListeners() {
@@ -56,18 +76,16 @@ export class MIDIController {
       if (this.selectedInputId && input.id !== this.selectedInputId) return;
 
       input.addListener('noteon', (e: NoteMessageEvent) => {
-        // WebMidi v3 velocity is 0.0-1.0, scale to 0-127 for Vult
         const vel = Math.round(((e as any).velocity || 1) * 127);
         this.onNoteOn(e.note.number, vel);
       });
-      
+
       input.addListener('noteoff', (e: NoteMessageEvent) => {
         this.onNoteOff(e.note.number);
       });
-      
+
       input.addListener('controlchange', (e: ControlChangeMessageEvent) => {
         if (typeof (e as any).value === 'number') {
-          // WebMidi v3 value is 0.0-1.0, scale to 0-127 for Vult
           const val = Math.round((e as any).value * 127);
           this.onCC((e as any).controller.number, val);
         }

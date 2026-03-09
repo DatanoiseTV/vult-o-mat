@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const REPO = 'DatanoiseTV/dsplab-projects';
-const TREE_URL = `/api/github/repos/${REPO}/git/trees/main?recursive=1`;
-const CACHE_TTL = 60_000;
-
 // ── Meta schema (schema_version: 1) ──────────────────────────────────────────
 
 export interface MetaKnob {
@@ -31,7 +27,6 @@ export interface VultMeta {
   tags: string[];
   complexity: 'beginner' | 'intermediate' | 'advanced';
   type: 'preset' | 'module';
-  /** Top-level grouping for presets: instrument | effect | utility */
   role?: 'instrument' | 'effect' | 'utility';
   inputs?: { audio?: boolean; midi?: boolean; cv?: boolean };
   knobs?: Record<string, MetaKnob>;
@@ -45,15 +40,15 @@ export interface VultMeta {
 // ── Entry types ───────────────────────────────────────────────────────────────
 
 export interface CommunityPreset {
-  name: string;      // from meta.name if available, else derived from filename
-  path: string;      // full repo path, e.g. "DatanoiseTV/ladder_filter.vult"
-  author: string;    // top-level folder name
+  name: string;
+  path: string;
+  author: string;
   meta: VultMeta | null;
 }
 
 export interface CommunityModule {
   name: string;
-  path: string;      // e.g. "modules/DatanoiseTV/adsr.vult"
+  path: string;
   author: string;
   meta: VultMeta | null;
 }
@@ -76,130 +71,138 @@ interface CacheEntry {
   ts: number;
 }
 
+// Cache TTL matches the server-side poll interval (5 min)
+const CACHE_TTL = 5 * 60 * 1000;
+
 let moduleCache: CacheEntry | null = null;
 let inflight: Promise<CacheEntry> | null = null;
 
-// ── File loader ───────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function fetchGitHubFile(path: string): Promise<string> {
-  const res = await fetch(`/api/github/repos/${REPO}/contents/${path}`);
-  if (!res.ok) throw new Error(`GitHub ${res.status}: ${path}`);
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return atob(data.content.replace(/\n/g, ''));
-}
-
-async function fetchMeta(path: string): Promise<VultMeta | null> {
-  try {
-    const raw = await fetchGitHubFile(path + '.meta');
-    return JSON.parse(raw) as VultMeta;
-  } catch {
-    return null;
-  }
-}
-
-function fallbackName(path: string): string {
-  const filename = path.split('/').pop() ?? path;
+function fallbackName(filePath: string): string {
+  const filename = filePath.split('/').pop() ?? filePath;
   return filename.replace(/\.vult$/, '').replace(/[_-]/g, ' ');
 }
 
-// ── Tree fetch ────────────────────────────────────────────────────────────────
+// Fetch a single file from the local repo mirror — no rate limits, no auth needed
+export async function loadRepoFile(filePath: string): Promise<string> {
+  const res = await fetch(`/api/repo/file?path=${encodeURIComponent(filePath)}`);
+  if (!res.ok) throw new Error(`repo file ${res.status}: ${filePath}`);
+  return res.text();
+}
+
+export const loadPresetCode = loadRepoFile;
+
+// ── Tree + meta fetch ─────────────────────────────────────────────────────────
 
 async function fetchAll(): Promise<CacheEntry> {
   if (moduleCache && Date.now() - moduleCache.ts < CACHE_TTL) return moduleCache;
   if (inflight) return inflight;
 
   inflight = (async () => {
-    const res = await fetch(TREE_URL);
-    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    // 1. Get the file tree from local mirror
+    const treeRes = await fetch('/api/repo/tree');
+    if (!treeRes.ok) throw new Error(`repo tree ${treeRes.status}`);
+    const treeData = await treeRes.json();
 
-    const tree: { type: string; path: string }[] = data.tree || [];
+    const tree: { path: string; type: string }[] = treeData.tree ?? [];
 
-    // Collect .vult paths and the set of .meta paths for O(1) lookup
-    const metaPaths = new Set(
-      tree.filter(e => e.type === 'blob' && e.path.endsWith('.vult.meta')).map(e => e.path)
+    // Collect sets for quick lookup
+    const metaPathSet = new Set(
+      tree.filter(e => e.path.endsWith('.vult.meta')).map(e => e.path)
     );
     const vultFiles = tree.filter(
-      e => e.type === 'blob' && e.path.endsWith('.vult') && !e.path.endsWith('.meta')
+      e => e.path.endsWith('.vult') && !e.path.endsWith('.meta')
     );
 
-    // Fetch all meta files in parallel (only those that exist)
+    // 2. Fetch all meta files from local mirror in parallel — no rate limits
     const metaFetches = new Map<string, Promise<VultMeta | null>>();
     for (const entry of vultFiles) {
       const metaPath = entry.path + '.meta';
-      if (metaPaths.has(metaPath)) {
-        metaFetches.set(entry.path, fetchMeta(entry.path));
+      if (metaPathSet.has(metaPath)) {
+        metaFetches.set(entry.path, (async () => {
+          try {
+            const text = await loadRepoFile(metaPath);
+            return JSON.parse(text) as VultMeta;
+          } catch {
+            return null;
+          }
+        })());
       }
     }
 
-    const presetMap = new Map<string, CommunityPreset[]>();
-    const modMap = new Map<string, CommunityModule[]>();
-
-    // Resolve all meta in parallel
+    // 3. Resolve everything concurrently
     const resolved = await Promise.all(
-      vultFiles.map(async entry => {
-        const meta = metaFetches.has(entry.path)
-          ? await metaFetches.get(entry.path)!
-          : null;
-        return { path: entry.path, meta };
-      })
+      vultFiles.map(async entry => ({
+        path: entry.path,
+        meta: metaFetches.has(entry.path) ? await metaFetches.get(entry.path)! : null,
+      }))
     );
 
-    for (const { path, meta } of resolved) {
-      const parts = path.split('/');
-      const displayName = meta?.name ?? fallbackName(path);
+    // 4. Group into presets and modules
+    const presetMap = new Map<string, CommunityPreset[]>();
+    const modMap    = new Map<string, CommunityModule[]>();
+
+    for (const { path: p, meta } of resolved) {
+      const parts       = p.split('/');
+      const displayName = meta?.name ?? fallbackName(p);
 
       if (parts[0] === 'modules') {
         if (parts.length < 3) continue;
         const author = parts[1];
         if (!modMap.has(author)) modMap.set(author, []);
-        modMap.get(author)!.push({ name: displayName, path, author, meta });
+        modMap.get(author)!.push({ name: displayName, path: p, author, meta });
       } else {
         const author = parts.length >= 2 ? parts[0] : 'community';
         if (!presetMap.has(author)) presetMap.set(author, []);
-        presetMap.get(author)!.push({ name: displayName, path, author, meta });
+        presetMap.get(author)!.push({ name: displayName, path: p, author, meta });
       }
     }
 
     const groups: AuthorGroup[] = Array.from(presetMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([author, presets]) => ({ author, presets: presets.sort((a, b) => a.name.localeCompare(b.name)) }));
+      .map(([author, presets]) => ({
+        author,
+        presets: presets.sort((a, b) => a.name.localeCompare(b.name)),
+      }));
 
     const moduleGroups: ModuleAuthorGroup[] = Array.from(modMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([author, modules]) => ({ author, modules: modules.sort((a, b) => a.name.localeCompare(b.name)) }));
+      .map(([author, modules]) => ({
+        author,
+        modules: modules.sort((a, b) => a.name.localeCompare(b.name)),
+      }));
 
     const entry: CacheEntry = { groups, moduleGroups, ts: Date.now() };
     moduleCache = entry;
-    inflight = null;
+    inflight    = null;
     return entry;
   })();
 
   return inflight;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── Public trigger for manual refresh ────────────────────────────────────────
 
-export async function loadRepoFile(path: string): Promise<string> {
-  return fetchGitHubFile(path);
+export async function triggerRepoRefresh(): Promise<void> {
+  moduleCache = null;
+  inflight    = null;
+  await fetch('/api/repo/refresh');
 }
 
-export const loadPresetCode = loadRepoFile;
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useCommunityPresets() {
-  const [groups, setGroups] = useState<AuthorGroup[]>(moduleCache?.groups ?? []);
+  const [groups,       setGroups]       = useState<AuthorGroup[]>(moduleCache?.groups ?? []);
   const [moduleGroups, setModuleGroups] = useState<ModuleAuthorGroup[]>(moduleCache?.moduleGroups ?? []);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastFetched, setLastFetched] = useState<Date | null>(
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [lastFetched,  setLastFetched]  = useState<Date | null>(
     moduleCache ? new Date(moduleCache.ts) : null
   );
 
-  const refresh = useCallback(async () => {
-    moduleCache = null;
-    inflight = null;
+  const load = useCallback(async (bust = false) => {
+    if (bust) { moduleCache = null; inflight = null; }
     setLoading(true);
     setError(null);
     try {
@@ -214,6 +217,12 @@ export function useCommunityPresets() {
     }
   }, []);
 
+  const refresh = useCallback(async () => {
+    // Ask server to re-download from GitHub, then reload our cache
+    await fetch('/api/repo/refresh');
+    await load(true);
+  }, [load]);
+
   useEffect(() => {
     if (moduleCache && Date.now() - moduleCache.ts < CACHE_TTL) {
       setGroups(moduleCache.groups);
@@ -221,16 +230,8 @@ export function useCommunityPresets() {
       setLastFetched(new Date(moduleCache.ts));
       return;
     }
-    setLoading(true);
-    fetchAll()
-      .then(result => {
-        setGroups(result.groups);
-        setModuleGroups(result.moduleGroups);
-        setLastFetched(new Date());
-      })
-      .catch(e => setError(e instanceof Error ? e.message : 'Failed'))
-      .finally(() => setLoading(false));
-  }, []);
+    load();
+  }, [load]);
 
   return { groups, moduleGroups, loading, error, lastFetched, refresh };
 }
