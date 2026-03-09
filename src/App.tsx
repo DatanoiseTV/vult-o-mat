@@ -975,8 +975,12 @@ const App: React.FC = () => {
               <PackageOpen size={22} /><span className="nav-label">Library</span>
             </div>
 
-            <div className="nav-item" title="Download .vult source" onClick={handleDownload}>
+            <div className="nav-item" title="Save Project to Local Storage" onClick={handleSave}>
               <HardDrive size={22} /><span className="nav-label">Save</span>
+            </div>
+
+            <div className="nav-item" title="Download .vult source" onClick={handleDownload}>
+              <Download size={22} /><span className="nav-label">Download</span>
             </div>
 
             <div className={`nav-item ${showExportModal ? 'active' : ''}`} title="Export Code" onClick={() => { setShowExportModal(!showExportModal); setExportStatus(''); setShowHistory(false); setShowCommunity(false); setShowInspector(false); }}>
