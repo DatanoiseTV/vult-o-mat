@@ -308,15 +308,7 @@ class VultProcessor extends AudioWorkletProcessor {
             }
           }
 
-          // CC Automation
-          if (this.seqState.ccTracks) {
-             this.seqState.ccTracks.forEach(track => {
-                const val = track.steps[this.seqState.currentStep];
-                if (val !== undefined && val !== null) {
-                   this.handleMIDIEvents('controlChange', { control: track.cc, value: Math.floor(val) });
-                }
-             });
-          }
+
 
           if (this.seqState.currentStep % 1 === 0) {
             this.port.postMessage({ type: 'seqStep', step: this.seqState.currentStep });
@@ -340,6 +332,28 @@ class VultProcessor extends AudioWorkletProcessor {
           }
         }
         this.seqState.sampleCounter--;
+
+        // CC Automation (Smooth Interpolation)
+        if (this.seqState.ccTracks && this.seqState.ccTracks.length > 0) {
+           if (!this.lastSentCC) this.lastSentCC = {};
+           
+           this.seqState.ccTracks.forEach(track => {
+              const currentStep = this.seqState.currentStep;
+              const nextStep = (currentStep + 1) % (this.seqState.length || 16);
+              const val1 = track.steps[currentStep];
+              const val2 = track.steps[nextStep];
+              
+              if (val1 !== undefined && val2 !== undefined) {
+                 const t = 1.0 - (Math.max(0, this.seqState.sampleCounter) / samplesPerTick);
+                 const smoothVal = Math.floor(val1 * (1 - t) + val2 * t);
+                 
+                 if (this.lastSentCC[track.cc] !== smoothVal) {
+                    this.lastSentCC[track.cc] = smoothVal;
+                    this.handleMIDIEvents('controlChange', { control: track.cc, value: smoothVal });
+                 }
+              }
+           });
+        }
       }
 
       const inputValues = [];
