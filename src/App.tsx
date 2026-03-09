@@ -486,6 +486,16 @@ const App: React.FC = () => {
   const [labHeight, setLabHeight] = useState(250);
   const [activeLabTab, setActiveLabTab] = useState<'lab' | 'seq' | 'midi'>('lab');
   
+  // Mobile UI State
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [mobileView, setMobileView] = useState<'editor' | 'lab' | 'panels'>('editor');
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const midiControllerRef = useRef<MIDIController | null>(null);
   const skipNextUpdateRef = useRef(false);
@@ -802,36 +812,67 @@ const App: React.FC = () => {
   return (
     <div className="app-container">
       <div className="sidebar">
-        <div className="logo" style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-          <Zap color="#ffcc00" size={22} />
-          <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#ffcc00', letterSpacing: '1px' }}>DSPLAB</span>
+        <div className="logo">
+          <Zap color="#ffcc00" size={24} />
+          <span>DSPLAB</span>
         </div>
-        <div className="nav-item active" title="IDE">
-          <Cpu size={17} /><span className="nav-label">IDE</span>
-        </div>
-        <div className="nav-item" title="Save" onClick={handleSave}>
-          <Save size={17} /><span className="nav-label">Save</span>
-        </div>
-        <div className="nav-item" title="Download .vult source" onClick={handleDownload}>
-          <Download size={17} /><span className="nav-label">Source</span>
-        </div>
-        <div className={`nav-item ${showExportModal ? 'active' : ''}`} title="Export Code" onClick={() => { setShowExportModal(!showExportModal); setExportStatus(''); }}>
-          <Code2 size={17} /><span className="nav-label">Export</span>
-        </div>
-        <div className={`nav-item ${showCommunity ? 'active' : ''}`} title="Community Presets" onClick={() => { setShowCommunity(!showCommunity); setShowHistory(false); setShowInspector(false); }}>
-          <Globe size={17} /><span className="nav-label">Community</span>
-        </div>
-        <div className={`nav-item ${showHistory ? 'active' : ''}`} title="Version History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); setShowCommunity(false); }}>
-          <History size={17} /><span className="nav-label">History</span>
-        </div>
-        <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); setShowCommunity(false); }}>
-          <Database size={17} /><span className="nav-label">Inspect</span>
-        </div>
-        <div className="spacer" />
-        <div className="midi-status-circle" title={midiStatus} style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00ff00', marginBottom: '20px' }} />
+        
+        {/* Mobile Navigation View Switcher */}
+        {isMobile ? (
+          <>
+            <div className={`nav-item ${mobileView === 'editor' ? 'active' : ''}`} onClick={() => setMobileView('editor')}>
+              <Cpu size={18} />
+              <span className="nav-label">Editor</span>
+            </div>
+            <div className={`nav-item ${mobileView === 'lab' ? 'active' : ''}`} onClick={() => setMobileView('lab')}>
+              <Sliders size={18} />
+              <span className="nav-label">Lab</span>
+            </div>
+            <div className={`nav-item ${mobileView === 'panels' ? 'active' : ''}`} onClick={() => setMobileView('panels')}>
+              <Database size={18} />
+              <span className="nav-label">Data</span>
+            </div>
+          </>
+        ) : (
+          /* Desktop Navigation Sidebar items */
+          <>
+            <div className="nav-item active" title="IDE">
+              <Cpu size={18} />
+              <span className="nav-label">IDE</span>
+            </div>
+            <div className="nav-item" title="Save" onClick={handleSave}>
+              <Save size={18} />
+              <span className="nav-label">Save</span>
+            </div>
+            <div className="nav-item" title="Download Vult" onClick={handleDownload}>
+              <Download size={18} />
+              <span className="nav-label">Vult</span>
+            </div>
+            <div className="nav-item" title="Export Code" onClick={() => setShowExportModal(true)}>
+              <Code2 size={18} />
+              <span className="nav-label">Export</span>
+            </div>
+            <div className={`nav-item ${showHistory ? 'active' : ''}`} title="History" onClick={() => { setShowHistory(!showHistory); setShowInspector(false); setShowCommunity(false); }}>
+              <History size={18} />
+              <span className="nav-label">Hist</span>
+            </div>
+            <div className={`nav-item ${showInspector ? 'active' : ''}`} title="State Inspector" onClick={() => { setShowInspector(!showInspector); setShowHistory(false); setShowCommunity(false); }}>
+              <Database size={18} />
+              <span className="nav-label">Data</span>
+            </div>
+            <div className={`nav-item ${showCommunity ? 'active' : ''}`} title="Community Presets" onClick={() => { setShowCommunity(!showCommunity); setShowHistory(false); setShowInspector(false); }}>
+              <Globe size={18} />
+              <span className="nav-label">Web</span>
+            </div>
+          </>
+        )}
+        <div className="spacer" style={{ flex: 1 }} />
+        {!isMobile && (
+          <div className="midi-status-circle" title={midiStatus} style={{ width: '10px', height: '10px', borderRadius: '50%', background: midiStatus.includes('On') ? '#00ff00' : '#444', marginBottom: '20px', transition: 'background 0.3s' }} />
+        )}
       </div>
 
-      <div className="main-content">
+      <div className="main-content" style={{ display: isMobile && mobileView !== 'editor' && mobileView !== 'lab' && mobileView !== 'panels' ? 'none' : 'flex' }}>
         <div className="toolbar">
           <input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} style={{ background: 'transparent', border: 'none', color: '#ffcc00', fontWeight: 'bold', width: '120px' }} />
           <button className={`play-btn ${isPlaying ? 'playing' : ''}`} onClick={handleTogglePlay}>
@@ -887,7 +928,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="editor-layout">
-          <div className="editor-container">
+          <div className="editor-container" style={{ display: isMobile && mobileView !== 'editor' ? 'none' : 'flex' }}>
             <div className="editor-wrapper" style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               <VultEditor ref={vultEditorRef} code={code} onChange={handleCodeChange} markers={editorMarkers} onStateUpdate={(cb) => audioEngineRef.current.onStateUpdate(cb)} diffMode={diffMode} originalCode={originalCode} />
               {diffMode && (
@@ -899,8 +940,8 @@ const App: React.FC = () => {
             </div>
             
             {/* TABBED LABORATORY RACK */}
-            <div className="resize-handle" onMouseDown={startResizing(setLabHeight, 100, 600)} />
-            <div className="lab-rack" style={{ height: `${labHeight}px`, flex: 'none', display: 'flex', flexDirection: 'column', background: '#1a1a1a' }}>
+            {!isMobile && <div className="resize-handle" onMouseDown={startResizing(setLabHeight, 100, 600)} />}
+            <div className="lab-rack" style={{ height: isMobile ? '100%' : `${labHeight}px`, flex: isMobile ? 1 : 'none', display: isMobile && mobileView !== 'lab' ? 'none' : 'flex', flexDirection: 'column', background: '#1a1a1a' }}>
               <div className="lab-tabs" style={{ display: 'flex', background: '#111', borderBottom: '1px solid #333', flexShrink: 0 }}>
                 <div className={`lab-tab ${activeLabTab === 'lab' ? 'active' : ''}`} onClick={() => setActiveLabTab('lab')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'lab' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'lab' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Sliders size={12} /> DSP LAB
@@ -995,7 +1036,7 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <div className="side-panel">
+          <div className="side-panel" style={{ display: isMobile && mobileView !== 'panels' ? 'none' : 'flex' }}>
             <div className="scope-section">
               <div className="section-title"><AudioWaveform size={12} /> DUAL-TRACE ANALYZER</div>
               <ScopeView getScopeData={() => audioEngineRef.current.getScopeData()} getSpectrumData={() => audioEngineRef.current.getSpectrumData()} getProbedData={(name) => audioEngineRef.current.getProbedStates()[name] || null} probes={activeProbes} />
