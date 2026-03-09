@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Knob } from './Knob';
+import { Settings2 } from 'lucide-react';
 
 interface ScopeViewProps {
   getScopeData: () => Float32Array;
@@ -12,9 +14,10 @@ type TriggerMode = 'NONE' | 'AUTO';
 const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getSpectrumData, getProbedData, probes = [] }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [triggerMode, setTriggerMode] = useState<TriggerMode>('AUTO');
-  const [threshold, setThreshold] = useState(0.0);
-  const [gain, setGain] = useState(1.0);
-  const [zoom, setZoom] = useState(1.0);
+  const [threshold, setThreshold] = useState<number>(0.0);
+  const [gain, setGain] = useState<number>(1.0);
+  const [zoom, setZoom] = useState<number>(1.0);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   
   const dimensionsRef = useRef({ width: 800, height: 200, dpr: 1 });
 
@@ -146,32 +149,41 @@ const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getSpectrumData, ge
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%', border: '1px solid #333', background: '#000', borderRadius: '8px', overflow: 'hidden' }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-      <div style={{ 
-        position: 'absolute', top: '8px', right: '8px', display: 'flex', flexDirection: 'column',
-        gap: '6px', background: 'rgba(0,0,0,0.8)', padding: '6px 10px', borderRadius: '4px', border: '1px solid #333', zIndex: 10
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '8px', color: '#666', fontWeight: 'bold' }}>SYNC</span>
-          <select value={triggerMode} onChange={(e) => setTriggerMode(e.target.value as TriggerMode)} style={{ background: '#111', border: '1px solid #444', color: '#00ff00', fontSize: '9px', width: '50px' }}>
-            <option value="NONE">NONE</option>
-            <option value="AUTO">AUTO</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '8px', color: '#666', fontWeight: 'bold' }}>GAIN</span>
-          <input type="range" min="0.1" max="5" step="0.1" value={gain} onChange={(e) => setGain(parseFloat(e.target.value))} style={{ width: '50px', height: '8px' }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '8px', color: '#666', fontWeight: 'bold' }}>ZOOM</span>
-          <input type="range" min="1" max="10" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} style={{ width: '50px', height: '8px' }} />
-        </div>
-        {triggerMode === 'AUTO' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '8px', color: '#666', fontWeight: 'bold' }}>THR</span>
-            <input type="range" min="-1" max="1" step="0.1" value={threshold} onChange={(e) => setThreshold(parseFloat(e.target.value))} style={{ width: '50px', height: '8px' }} />
+      
+      <button 
+        onClick={() => setShowSettings(!showSettings)} 
+        style={{ 
+          position: 'absolute', top: '8px', right: '8px', zIndex: 20, 
+          background: showSettings ? 'rgba(0, 122, 204, 0.4)' : 'rgba(255,255,255,0.1)', 
+          border: '1px solid rgba(255,255,255,0.2)', color: showSettings ? '#00ffcc' : '#aaa', 
+          borderRadius: '6px', padding: '4px', cursor: 'pointer', backdropFilter: 'blur(4px)',
+          transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}
+        title="Toggle Scope Settings"
+      >
+        <Settings2 size={16} />
+      </button>
+
+      {showSettings && (
+        <div style={{ 
+          position: 'absolute', top: '40px', right: '8px', display: 'flex', alignItems: 'center',
+          gap: '12px', background: 'rgba(20,20,20,0.85)', backdropFilter: 'blur(12px)', padding: '8px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', zIndex: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '8px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>SYNC</span>
+            <select value={triggerMode} onChange={(e) => setTriggerMode(e.target.value as TriggerMode)} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#00ffcc', fontSize: '9px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 4px' }}>
+              <option value="NONE">NONE</option>
+              <option value="AUTO">AUTO</option>
+            </select>
           </div>
-        )}
-      </div>
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
+          <Knob label="GAIN" value={gain} min={0.1} max={5} onChange={setGain} size={28} color="#ffcc00" isFloat />
+          <Knob label="ZOOM" value={zoom} min={1} max={10} onChange={setZoom} size={28} color="#00ffcc" isFloat />
+          {triggerMode === 'AUTO' && (
+            <Knob label="THR" value={threshold} min={-1} max={1} onChange={setThreshold} size={28} color="#ff4444" isFloat />
+          )}
+        </div>
+      )}
     </div>
   );
 };

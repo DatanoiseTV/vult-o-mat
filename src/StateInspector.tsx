@@ -55,7 +55,7 @@ const StateInspector: React.FC<StateInspectorProps> = ({ onStateUpdate, onProbe,
         {filter && <X size={14} color="#666" style={{ cursor: 'pointer' }} onClick={() => setFilter('')} />}
       </div>
       
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
+      <div className="no-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Fira Code', monospace", tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ textAlign: 'left', borderBottom: '1px solid #333' }}>

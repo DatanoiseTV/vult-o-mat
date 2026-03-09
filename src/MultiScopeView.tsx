@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Knob } from './Knob';
+import { Settings2 } from 'lucide-react';
 
 interface MultiScopeViewProps {
   probes: string[];
@@ -7,9 +9,10 @@ interface MultiScopeViewProps {
 
 const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, onStateUpdate }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const historyRef = useRef<Record<string, number[]>>({});
   const [timebase, setTimebase] = useState(1000);
+  const [showSettings, setShowSettings] = useState(false);
   const dimensionsRef = useRef({ width: 800, height: 250, dpr: 1 });
+  const historyRef = useRef<Record<string, number[]>>({});
 
   useEffect(() => {
     // Subscribe to fresh data packets only
@@ -96,6 +99,7 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, onStateUpdate }
         if (history.length < 2) return;
 
         const displayHistory = history.slice(-timebase);
+        if (!displayHistory || displayHistory.length === 0) return;
 
         if (idx > 0) {
           ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
@@ -108,7 +112,7 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, onStateUpdate }
         ctx.lineWidth = 1.5;
         ctx.beginPath();
 
-        const sliceWidth = width / (timebase - 1);
+        const sliceWidth = width / Math.max(1, timebase - 1);
         
         let min = displayHistory[0];
         let max = displayHistory[0];
@@ -137,7 +141,8 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, onStateUpdate }
         ctx.stroke();
 
         ctx.font = 'bold 10px monospace';
-        const labelText = `${probe}: ${displayHistory[displayHistory.length-1].toFixed(4)}`;
+        const lastVal = displayHistory[displayHistory.length-1];
+        const labelText = `${probe}: ${typeof lastVal === 'number' ? lastVal.toFixed(4) : '...'}`;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         const textWidth = ctx.measureText(labelText).width;
         ctx.fillRect(2, (idx * laneHeight) + 2, textWidth + 6, 14);
@@ -154,15 +159,29 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, onStateUpdate }
   }, [probes, timebase]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-        <span style={{ fontSize: '8px', color: '#666' }}>TIMEBASE</span>
-        <input 
-          type="range" min="100" max="5000" value={timebase} 
-          onChange={(e) => setTimebase(parseInt(e.target.value))}
-          style={{ width: '80px', height: '10px' }}
-        />
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', position: 'relative' }}>
+      <button 
+        onClick={() => setShowSettings(!showSettings)} 
+        style={{ 
+          position: 'absolute', top: '8px', right: '8px', zIndex: 20, 
+          background: showSettings ? 'rgba(0, 122, 204, 0.4)' : 'rgba(255,255,255,0.1)', 
+          border: '1px solid rgba(255,255,255,0.2)', color: showSettings ? '#00ffcc' : '#aaa', 
+          borderRadius: '6px', padding: '4px', cursor: 'pointer', backdropFilter: 'blur(4px)',
+          transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}
+        title="Toggle Multi-Scope Settings"
+      >
+        <Settings2 size={16} />
+      </button>
+
+      {showSettings && (
+        <div style={{ 
+          position: 'absolute', top: '40px', right: '8px', display: 'flex', alignItems: 'center',
+          background: 'rgba(20,20,20,0.85)', backdropFilter: 'blur(12px)', padding: '8px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', zIndex: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
+        }}>
+          <Knob label="TIME" value={timebase} min={100} max={5000} onChange={setTimebase} size={28} color="#00ffcc" isFloat={false} />
+        </div>
+      )}
       <div style={{ flex: 1, border: '1px solid #333', background: '#000', borderRadius: '8px', overflow: 'hidden', minHeight: 0 }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       </div>

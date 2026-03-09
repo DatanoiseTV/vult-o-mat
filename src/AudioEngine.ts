@@ -7,7 +7,7 @@ export interface VultInstance {
   controlChange?: Function;
 }
 
-export type SourceType = 'oscillator' | 'live' | 'cv' | 'silence' | 'test_noise' | 'impulse' | 'step' | 'sweep' | 'sample';
+export type SourceType = 'oscillator' | 'lfo' | 'live' | 'cv' | 'silence' | 'test_noise' | 'impulse' | 'step' | 'sweep' | 'sample';
 
 export interface InputSource {
   name: string;
@@ -18,6 +18,9 @@ export interface InputSource {
   oscType: 'sine' | 'sawtooth' | 'square' | 'triangle';
   isCycling?: boolean;
   isLooping?: boolean;
+  lfoRate?: number;
+  lfoDepth?: number;
+  lfoShape?: 'sine' | 'triangle' | 'square' | 'sawtooth';
 }
 
 export class AudioEngine {

@@ -385,6 +385,19 @@ class VultProcessor extends AudioWorkletProcessor {
           else if (src.oscType === 'square') inputValues.push(p < 0.5 ? 1 : -1);
           else if (src.oscType === 'triangle') inputValues.push(Math.abs(p * 4 - 2) - 1);
           else inputValues.push(0);
+        } else if (src.type === 'lfo') {
+          const rate = src.lfoRate || 1;
+          const depth = src.lfoDepth || 1;
+          const phaseInc = rate / this.sampleRate;
+          this.phases[s] = (this.phases[s] + phaseInc) % 1.0;
+          const p = this.phases[s];
+          let val = 0;
+          if (src.lfoShape === 'sine') val = Math.sin(p * 2 * Math.PI);
+          else if (src.lfoShape === 'sawtooth') val = p * 2 - 1;
+          else if (src.lfoShape === 'square') val = p < 0.5 ? 1 : -1;
+          else if (src.lfoShape === 'triangle') val = Math.abs(p * 4 - 2) - 1;
+          
+          inputValues.push(val * depth);
         } else if (src.type === 'sample') {
           const buffer = this.sampleBuffers[s];
           if (buffer) {

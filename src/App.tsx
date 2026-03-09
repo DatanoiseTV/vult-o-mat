@@ -501,6 +501,7 @@ const App: React.FC = () => {
 
   // UI States
   const [labHeight, setLabHeight] = useState(250);
+  const [sidePanelWidth, setSidePanelWidth] = useState(320);
   const [activeLabTab, setActiveLabTab] = useState<'lab' | 'seq' | 'midi'>('lab');
   
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
@@ -553,7 +554,10 @@ const App: React.FC = () => {
       type: (i === 0) ? 'oscillator' : 'cv' as SourceType,
       freq: 440,
       value: 0.5,
-      oscType: 'sine' as const
+      oscType: 'sine' as const,
+      lfoRate: 1.0,
+      lfoDepth: 1.0,
+      lfoShape: 'sine' as const
     }));
   }, []);
 
@@ -883,6 +887,27 @@ const App: React.FC = () => {
     window.addEventListener('mouseup', handleUp);
   };
 
+  const startResizingH = (setter: React.Dispatch<React.SetStateAction<number>>, min: number, max: number) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    let lastX = e.clientX;
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      const delta = lastX - moveEvent.clientX; // Left drag increases right panel width
+      lastX = moveEvent.clientX;
+      setter(prev => Math.max(min, Math.min(max, prev + delta)));
+    };
+
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      document.body.style.cursor = 'default';
+    };
+
+    document.body.style.cursor = 'ew-resize';
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  };
+
   const getCodeSummary = (codeStr: string) => {
     const lines = codeStr.split('\n');
     // Find the first line that isn't whitespace or a decorative comment
@@ -1042,7 +1067,7 @@ const App: React.FC = () => {
             <div className="lab-rack" style={{ height: isMobile ? '100%' : (activeLabTab === 'seq' ? 'max-content' : `${labHeight}px`), flex: isMobile ? 1 : 'none', display: isMobile && mobileView !== 'lab' ? 'none' : 'flex', flexDirection: 'column', background: '#1a1a1a', maxHeight: activeLabTab === 'seq' ? '85vh' : 'none', overflowY: activeLabTab === 'seq' ? 'auto' : 'visible' }}>
               <div className="lab-tabs" style={{ display: 'flex', background: '#111', borderBottom: '1px solid #333', flexShrink: 0 }}>
                 <div className={`lab-tab ${activeLabTab === 'lab' ? 'active' : ''}`} onClick={() => setActiveLabTab('lab')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'lab' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'lab' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Sliders size={12} /> DSP LAB
+                  <Sliders size={12} /> INPUTS
                 </div>
                 <div className={`lab-tab ${activeLabTab === 'seq' ? 'active' : ''}`} onClick={() => setActiveLabTab('seq')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'seq' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'seq' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Music size={12} /> SEQUENCER
@@ -1057,45 +1082,91 @@ const App: React.FC = () => {
                   <div className="dsp-lab" style={{ height: '100%', overflowY: 'auto' }}>
                     <div className="input-strips">
                       {inputs.map((input, i) => (
-                        <div key={i} className="input-strip">
-                          <div className="strip-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            {input.name}
+                        <div key={i} className="input-strip" style={{ position: 'relative' }}>
+                          <div className="strip-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '11px', letterSpacing: '0.5px', color: '#ffcc00', textShadow: '0 0 5px rgba(255,204,0,0.4)' }}>
+                              {input.name.toUpperCase()}
+                            </span>
                             {(input.type === 'impulse' || input.type === 'step') && (
-                              <Zap size={10} style={{ cursor: 'pointer', color: '#ffcc00' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
+                              <button onClick={() => audioEngineRef.current.triggerGenerator(i)} style={{ background: 'rgba(255,204,0,0.1)', border: '1px solid rgba(255,204,0,0.3)', borderRadius: '4px', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Zap size={10} color="#ffcc00" />
+                              </button>
                             )}
                           </div>
-                          <select value={input.type} onChange={(e) => updateInput(i, { type: e.target.value as SourceType })}>
-                            <option value="oscillator">Oscillator</option><option value="sample">Sample File</option><option value="live">Live Audio</option><option value="cv">CV Slider</option><option value="impulse">Impulse</option><option value="step">Step</option><option value="sweep">Sweep</option><option value="test_noise">Test Noise</option><option value="silence">Silence</option>
+                          
+                          <select value={input.type} onChange={(e) => updateInput(i, { type: e.target.value as SourceType })} style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '10px', padding: '4px', borderRadius: '4px', width: '100%', outline: 'none' }}>
+                            <option value="cv">DC / Constant</option>
+                            <option value="lfo">LFO</option>
+                            <option value="oscillator">Audio Osc</option>
+                            <option value="live">Live Audio In</option>
+                            <option value="sample">Sample Playback</option>
+                            <option value="impulse">Impulse (Trigger)</option>
+                            <option value="test_noise">Noise Generator</option>
                           </select>
-                          {input.type === 'oscillator' && (
-                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                              <select value={input.oscType} onChange={(e) => updateInput(i, { oscType: e.target.value as any })} style={{ marginBottom: '4px', width: '100%' }}><option value="sine">Sine</option><option value="sawtooth">Saw</option><option value="square">Square</option><option value="triangle">Tri</option></select>
-                              <Knob label="FREQ" value={input.freq} min={20} max={20000} onChange={(val) => updateInput(i, { freq: val })} size={36} />
-                            </div>
-                          )}
-                          {input.type === 'sample' && (
-                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center' }}>
-                              <input type="file" accept="audio/*" onChange={(e) => e.target.files && handleSampleUpload(i, e.target.files[0])} style={{ display: 'none' }} id={`sample-${i}`} />
-                              <label htmlFor={`sample-${i}`} style={{ cursor: 'pointer', fontSize: '8px', color: '#ffcc00', border: '1px solid #444', padding: '2px 4px' }}>LOAD</label>
-                              <Play size={10} style={{ cursor: 'pointer', color: '#00ff00', margin: '0 4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
-                              <Activity size={12} style={{ cursor: "pointer", color: input.isLooping ? "#00ff00" : "#444" }} onClick={() => updateInput(i, { isLooping: !input.isLooping })} />
-                            </div>
-                          )}
-                          {input.type === 'cv' && (
-                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                              <Knob label="VALUE" value={input.value} min={0} max={1} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={36} />
-                              <div style={{ marginTop: '4px' }}><Activity size={12} style={{ cursor: "pointer", color: input.isCycling ? "#00ff00" : "#444" }} onClick={() => updateInput(i, { isCycling: !input.isCycling })} /></div>
-                            </div>
-                          )}
-                          {input.type === 'sweep' && (
-                            <div className="strip-controls" style={{ alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                              <Knob label="TIME(s)" value={input.value} min={0.1} max={10.0} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={36} />
-                              <Play size={10} style={{ cursor: 'pointer', color: '#ffcc00', marginTop: '4px' }} onClick={() => audioEngineRef.current.triggerGenerator(i)} />
-                            </div>
-                          )}
-                          {input.type === 'live' && (
-                            <select value={input.deviceId} onChange={(e) => updateInput(i, { deviceId: e.target.value })}>{audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Input'}</option>)}</select>
-                          )}
+
+                          <div className="strip-controls" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', padding: '8px 4px', marginTop: '4px', minHeight: '100px' }}>
+                            {input.type === 'oscillator' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', alignItems: 'center' }}>
+                                <select value={input.oscType} onChange={(e) => updateInput(i, { oscType: e.target.value as any })} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#00ffcc', fontSize: '9px', padding: '2px 4px', borderRadius: '4px', outline: 'none', width: '90%', textAlign: 'center' }}>
+                                  <option value="sine">SINE</option><option value="sawtooth">SAW</option><option value="square">SQUARE</option><option value="triangle">TRI</option>
+                                </select>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                  <Knob label="FREQ" value={input.freq} min={0.1} max={20000} onChange={(val) => updateInput(i, { freq: val })} size={32} color="#00ffcc" isFloat />
+                                </div>
+                              </div>
+                            )}
+
+                            {input.type === 'lfo' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', alignItems: 'center' }}>
+                                <select value={input.lfoShape || 'sine'} onChange={(e) => updateInput(i, { lfoShape: e.target.value as any })} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#ffcc00', fontSize: '9px', padding: '2px 4px', borderRadius: '4px', outline: 'none', width: '90%', textAlign: 'center' }}>
+                                  <option value="sine">SINE</option><option value="triangle">TRI</option><option value="square">SQUARE</option><option value="sawtooth">SAW</option>
+                                </select>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                  <Knob label="RATE" value={input.lfoRate || 1} min={0.1} max={50} onChange={(val) => updateInput(i, { lfoRate: val })} size={28} color="#ffcc00" isFloat />
+                                  <Knob label="DEPTH" value={input.lfoDepth || 1} min={0} max={10} onChange={(val) => updateInput(i, { lfoDepth: val })} size={28} color="#ff4444" isFloat />
+                                </div>
+                              </div>
+                            )}
+
+                            {input.type === 'cv' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+                                <Knob label="VALUE" value={input.value} min={0} max={1} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={40} color="#ffcc00" />
+                                <button onClick={() => updateInput(i, { isCycling: !input.isCycling })} style={{ background: input.isCycling ? 'rgba(0,255,0,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${input.isCycling ? 'rgba(0,255,0,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '4px', padding: '4px 12px', cursor: 'pointer', fontSize: '9px', color: input.isCycling ? '#00ff00' : '#888', fontWeight: 'bold' }}>
+                                  AUTO SWEEP
+                                </button>
+                              </div>
+                            )}
+
+                            {input.type === 'sample' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <input type="file" accept="audio/*" onChange={(e) => e.target.files && handleSampleUpload(i, e.target.files[0])} style={{ display: 'none' }} id={`sample-${i}`} />
+                                  <label htmlFor={`sample-${i}`} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: '9px', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>LOAD FILE</label>
+                                  <button onClick={() => audioEngineRef.current.triggerGenerator(i)} style={{ background: 'rgba(0,255,0,0.2)', border: '1px solid rgba(0,255,0,0.4)', borderRadius: '4px', cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Play size={10} color="#00ff00" />
+                                  </button>
+                                </div>
+                                <button onClick={() => updateInput(i, { isLooping: !input.isLooping })} style={{ background: input.isLooping ? 'rgba(0,255,204,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${input.isLooping ? 'rgba(0,255,204,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '4px', padding: '4px 12px', cursor: 'pointer', fontSize: '9px', color: input.isLooping ? '#00ffcc' : '#888', fontWeight: 'bold' }}>
+                                  LOOP: {input.isLooping ? 'ON' : 'OFF'}
+                                </button>
+                              </div>
+                            )}
+
+                            {input.type === 'live' && (
+                              <select value={input.deviceId} onChange={(e) => updateInput(i, { deviceId: e.target.value })} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: '9px', padding: '4px', borderRadius: '4px', outline: 'none', maxWidth: '90%' }}>
+                                <option value="default">Default Mic</option>
+                                {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || 'Input'}</option>)}
+                              </select>
+                            )}
+
+                            {input.type === 'impulse' && (
+                              <div style={{ color: '#666', fontSize: '9px', textAlign: 'center', fontStyle: 'italic' }}>1-sample trigger. Click header zap to fire.</div>
+                            )}
+                            
+                            {input.type === 'test_noise' && (
+                              <div style={{ color: '#00ffcc', fontSize: '9px', textAlign: 'center', fontWeight: 'bold' }}>White Noise Active</div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1152,11 +1223,13 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
-          </div>
-          
-          <div className="side-panel" style={{ display: isMobile && mobileView !== 'panels' ? 'none' : 'flex' }}>
-            <div className="scope-section">
-              <div className="section-title"><AudioWaveform size={12} /> DUAL-TRACE ANALYZER</div>
+            </div>
+
+            {!isMobile && mobileView !== 'panels' && (
+            <div className="resize-handle-h" onMouseDown={startResizingH(setSidePanelWidth, 200, 600)} />
+            )}
+            <div className="side-panel" style={{ display: isMobile && mobileView !== 'panels' ? 'none' : 'flex', width: isMobile ? '100%' : `${sidePanelWidth}px` }}>
+            <div className="scope-section">              <div className="section-title"><AudioWaveform size={12} /> DUAL-TRACE ANALYZER</div>
               <ScopeView getScopeData={() => audioEngineRef.current.getScopeData()} getSpectrumData={() => audioEngineRef.current.getSpectrumData()} getProbedData={(name) => audioEngineRef.current.getProbedStates()[name] || null} probes={activeProbes} />
             </div>
             <div className="llm-section">
