@@ -892,10 +892,27 @@
 .drum-cell.active-step {
   border: 1px solid #7ec8ff !important;
 }
+/* MODALS */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
 /* RESTORE SESSION MODAL */
 .restore-session-overlay {
   z-index: 3000 !important;
   background: rgba(0, 0, 0, 0.9) !important;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .restore-modal {
