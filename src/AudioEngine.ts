@@ -497,7 +497,8 @@ export class AudioEngine {
         stats['F0'] = '—';
     } else {
         const fundamentalHz = Math.round(fundamentalBin * binFreq);
-        const windowHalf = 8;
+        // Reduce window to ±4 to prevent overlapping harmonics at low frequencies (e.g. 50Hz)
+        const windowHalf = 4;
         const usedBins = new Uint8Array(binCount);
         let signalPower = 0;
         let fundamentalPower = 0;
@@ -541,6 +542,7 @@ export class AudioEngine {
         Fs: (this.audioContext.sampleRate / 1000).toFixed(1) + ' kHz'
     };
 
+    // Always attempt to return R if analyserR exists
     if (this.analyserR) {
         const statsR = this.computeChannelStats(this.analyserR, this.scopeBufferR);
         result.R = statsR.display;
