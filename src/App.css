@@ -292,7 +292,9 @@
 }
 
 .scope-section {
-  flex: 0 0 350px;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 520px;
   padding: 20px 10px 40px;
   border-bottom: 1px solid var(--border-subtle);
   background: #000;
@@ -683,7 +685,6 @@
   white-space: nowrap;
   overflow: hidden;
   margin-bottom: 15px;
-}
   text-overflow: ellipsis;
   flex: 1;
   pointer-events: none;

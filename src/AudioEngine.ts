@@ -26,10 +26,13 @@ export interface InputSource {
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
-  private analyser: AnalyserNode | null = null;
+  private analyserL: AnalyserNode | null = null;
+  private analyserR: AnalyserNode | null = null;
+  private splitter: ChannelSplitterNode | null = null;
   private inputStream: MediaStream | null = null;
   private inputNode: MediaStreamAudioSourceNode | null = null;
-  private scopeBuffer: Float32Array;
+  private scopeBufferL: Float32Array;
+  private scopeBufferR: Float32Array;
   private spectrumBuffer: Uint8Array;
   private isPlaying = false;
   private liveState: Record<string, any> = {};
@@ -53,8 +56,9 @@ export class AudioEngine {
   private midiActListeners: ((kind: string) => void)[] = [];
 
   constructor() {
-    this.scopeBuffer = new Float32Array(2048);
-    this.spectrumBuffer = new Uint8Array(1024);
+    this.scopeBufferL = new Float32Array(8192);
+    this.scopeBufferR = new Float32Array(8192);
+    this.spectrumBuffer = new Uint8Array(4096);
   }
 
   public onStateUpdate(callback: (state: Record<string, any>, probes: Record<string, number[]>) => void) {
@@ -183,15 +187,22 @@ export class AudioEngine {
     this.initContextSync();
     if (!this.workletNode) {
       try {
-        await this.audioContext.audioWorklet.addModule('/vult-processor.js');
+        await this.audioContext!.audioWorklet.addModule('/vult-processor.js');
       } catch (e) {
         throw new Error("AudioWorklet failed to load.");
       }
 
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 2048;
+      this.splitter = this.audioContext!.createChannelSplitter(2);
 
-      this.workletNode = new AudioWorkletNode(this.audioContext, 'vult-processor', {
+      this.analyserL = this.audioContext!.createAnalyser();
+      this.analyserL.fftSize = 8192;
+      this.analyserL.smoothingTimeConstant = 0.85;
+      
+      this.analyserR = this.audioContext!.createAnalyser();
+      this.analyserR.fftSize = 8192;
+      this.analyserR.smoothingTimeConstant = 0.85;
+
+      this.workletNode = new AudioWorkletNode(this.audioContext!, 'vult-processor', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
         outputChannelCount: [2]
@@ -217,12 +228,19 @@ export class AudioEngine {
         }
       };
 
-      this.workletNode.connect(this.analyser);
-      this.analyser.connect(this.audioContext.destination);
+      this.workletNode.connect(this.splitter);
+      this.splitter.connect(this.analyserL, 0, 0);
+      this.splitter.connect(this.analyserR, 1, 0);
+      
+      // Connect L + R back into destination via a merger so you can hear both channels properly
+      const merger = this.audioContext!.createChannelMerger(2);
+      this.analyserL.connect(merger, 0, 0);
+      this.analyserR.connect(merger, 0, 1);
+      merger.connect(this.audioContext!.destination);
 
       this.workletNode.port.postMessage({
         type: 'setSampleRate',
-        data: { sampleRate: this.audioContext.sampleRate }
+        data: { sampleRate: this.audioContext!.sampleRate }
       });
       this.workletNode.port.postMessage({ type: 'setSources', data: { sources: this.sources } });
 
@@ -233,8 +251,8 @@ export class AudioEngine {
       }));
     }
 
-    if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume();
+    if (this.audioContext!.state === 'suspended') {
+      await this.audioContext!.resume();
     }
     this.isPlaying = true;
   }
@@ -293,26 +311,29 @@ export class AudioEngine {
   public getAudioMetrics() { return this.audioMetrics; }
 
   public getScopeData() {
-    if (this.analyser) {
-      this.analyser.getFloatTimeDomainData(this.scopeBuffer as any);
+    if (this.analyserL) {
+      this.analyserL.getFloatTimeDomainData(this.scopeBufferL as any);
     }
-    return this.scopeBuffer;
+    if (this.analyserR) {
+      this.analyserR.getFloatTimeDomainData(this.scopeBufferR as any);
+    }
+    return { l: this.scopeBufferL, r: this.scopeBufferR };
   }
 
   public getSpectrumData() {
-    if (this.analyser) {
-      this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
+    if (this.analyserL) {
+      this.analyserL.getByteFrequencyData(this.spectrumBuffer as any);
     }
     return this.spectrumBuffer;
   }
 
   public getPeakFrequencies(count: number = 3) {
-    if (!this.analyser || !this.audioContext) return [];
-    this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
+    if (!this.analyserL || !this.audioContext) return [];
+    this.analyserL.getByteFrequencyData(this.spectrumBuffer as any);
 
     const bins = Array.from(this.spectrumBuffer).map((energy, index) => ({
       energy,
-      frequency: Math.round(index * this.audioContext!.sampleRate / this.analyser!.fftSize)
+      frequency: Math.round(index * this.audioContext!.sampleRate / this.analyserL!.fftSize)
     }));
 
     // Sort by energy descending and return top N unique frequencies
@@ -324,12 +345,12 @@ export class AudioEngine {
   }
 
   public getHarmonics() {
-    if (!this.analyser || !this.audioContext) return null;
-    this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
+    if (!this.analyserL || !this.audioContext) return null;
+    this.analyserL.getByteFrequencyData(this.spectrumBuffer as any);
 
     const bins = this.spectrumBuffer;
-    const binFreq = this.audioContext.sampleRate / this.analyser.fftSize;
-    const binCount = this.analyser.frequencyBinCount;
+    const binFreq = this.audioContext.sampleRate / this.analyserL.fftSize;
+    const binCount = this.analyserL.frequencyBinCount;
 
     // Find fundamental (peak with highest energy between 40Hz and 5kHz)
     let maxEnergy = -1;
@@ -375,12 +396,12 @@ export class AudioEngine {
   }
 
   public getSignalQualityMetrics() {
-    if (!this.analyser || !this.audioContext) return null;
-    this.analyser.getByteFrequencyData(this.spectrumBuffer as any);
+    if (!this.analyserL || !this.audioContext) return null;
+    this.analyserL.getByteFrequencyData(this.spectrumBuffer as any);
 
     const bins = this.spectrumBuffer;
-    const minDb = this.analyser.minDecibels;
-    const maxDb = this.analyser.maxDecibels;
+    const minDb = this.analyserL.minDecibels;
+    const maxDb = this.analyserL.maxDecibels;
     const range = maxDb - minDb;
 
     let totalPower = 0;
@@ -409,7 +430,7 @@ export class AudioEngine {
       thdn_percent: thdn.toFixed(3) + "%",
       snr_db: snr.toFixed(2) + " dB",
       peak_level_db: peakDb.toFixed(2) + " dBFS",
-      fundamental_hz: Math.round(maxBin * this.audioContext.sampleRate / this.analyser.fftSize)
+      fundamental_hz: Math.round(maxBin * this.audioContext.sampleRate / this.analyserL.fftSize)
     };
   }
 

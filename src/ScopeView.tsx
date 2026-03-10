@@ -1,23 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Knob } from './Knob';
-import { Settings2 } from 'lucide-react';
-
 interface ScopeViewProps {
-  getScopeData: () => Float32Array;
-  getSpectrumData: () => Uint8Array;
+  getScopeData: () => { l: Float32Array; r: Float32Array };
   getProbedData?: (name: string) => number[] | null;
   probes?: string[];
 }
 
 type TriggerMode = 'NONE' | 'AUTO';
+type ScopeMode = 'L/R' | 'X/Y';
 
-const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getSpectrumData, getProbedData, probes = [] }) => {
+const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getProbedData, probes = [] }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [triggerMode, setTriggerMode] = useState<TriggerMode>('AUTO');
+  const [scopeMode, setScopeMode] = useState<ScopeMode>('L/R');
   const [threshold, setThreshold] = useState<number>(0.0);
   const [gain, setGain] = useState<number>(1.0);
   const [zoom, setZoom] = useState<number>(1.0);
-  const [showSettings, setShowSettings] = useState<boolean>(false);
   
   const dimensionsRef = useRef({ width: 800, height: 200, dpr: 1 });
 
@@ -55,7 +52,6 @@ const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getSpectrumData, ge
     const render = () => {
       const { width, height, dpr } = dimensionsRef.current;
       const scopeData = getScopeData();
-      const spectrumData = getSpectrumData();
       
       ctx.save();
       ctx.scale(dpr, dpr);
@@ -64,77 +60,134 @@ const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getSpectrumData, ge
       ctx.fillStyle = '#050a05';
       ctx.fillRect(0, 0, width, height);
 
-      // Grid
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
-      ctx.lineWidth = 0.5;
-      for (let i = 0; i < width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, height); ctx.stroke(); }
-      for (let i = 0; i < height; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(width, i); ctx.stroke(); }
-
-      // Improved Spectrum (Log scale)
-      const barCount = 128;
-      const barWidth = width / barCount;
-      const gradient = ctx.createLinearGradient(0, height, 0, 0);
-      gradient.addColorStop(0, 'rgba(0, 50, 255, 0.0)');
-      gradient.addColorStop(0.5, 'rgba(0, 150, 255, 0.2)');
-      gradient.addColorStop(1, 'rgba(0, 255, 255, 0.4)');
-      
-      ctx.fillStyle = gradient;
-      for (let i = 0; i < barCount; i++) {
-        const sampleIdx = Math.floor(Math.pow(spectrumData.length, i / barCount));
-        const val = spectrumData[sampleIdx];
-        const barHeight = (val / 255) * height * 0.8;
-        ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
-      }
-
-      // Find Trigger Point
+      // Find Trigger Point (using Left channel as origin)
       let startIdx = 0;
       if (triggerMode === 'AUTO') {
-        const searchRange = scopeData.length / 2;
+        const searchRange = scopeData.l.length / 2;
         for (let i = 1; i < searchRange; i++) {
-          if (scopeData[i-1] <= threshold && scopeData[i] > threshold) {
+          if (scopeData.l[i-1] <= threshold && scopeData.l[i] > threshold) {
             startIdx = i;
             break;
           }
         }
       }
 
-      const samplesToShow = Math.floor((scopeData.length / 2) / zoom);
-      const displayData = scopeData.subarray(startIdx, startIdx + samplesToShow);
+      const samplesToShow = Math.floor((scopeData.l.length / 2) / zoom);
+      const displayDataL = scopeData.l.subarray(startIdx, startIdx + samplesToShow);
+      const displayDataR = scopeData.r.subarray(startIdx, startIdx + samplesToShow);
 
-      // Main Output Trace
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = '#00ff00';
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      let sliceWidth = width / displayData.length;
-      let x = 0;
-      for (let i = 0; i < displayData.length; i++) {
-        const y = (displayData[i] * gain * halfHeight * 0.9) + halfHeight;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        x += sliceWidth;
+      let isStereo = false;
+      if (scopeMode !== 'X/Y') {
+        for (let i = 0; i < displayDataL.length; i++) {
+          if (Math.abs(displayDataL[i] - displayDataR[i]) > 0.001) { isStereo = true; break; }
+        }
       }
-      ctx.stroke();
+      // Grid
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.15)';
+      ctx.lineWidth = 1;
+      
+      // Vertical grid lines (Time)
+      for (let i = 0; i <= 10; i++) {
+        const x = (width / 10) * i;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
 
-      // Probed Trace
-      if (probes.length > 0 && getProbedData) {
-        const probedData = getProbedData(probes[0]);
-        if (probedData && probedData.length > 0) {
-          ctx.shadowBlur = 5;
-          ctx.shadowColor = '#ffcc00';
-          ctx.strokeStyle = '#ffcc00';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([5, 5]);
+      // Horizontal Grid lines and Labels
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+      ctx.font = '10px monospace';
+      const drawHGrid = (centerY: number, ampY: number) => {
+        const vals = [1.0, 0.5, 0, -0.5, -1.0];
+        vals.forEach((v) => {
+          const y = centerY - (v * ampY);
+          const logicalVal = v / gain;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+          // Dont draw overlapping text for 0 in stereo mode if its crowded, but the logic is fine
+          ctx.fillText(logicalVal.toFixed(2), 5, y - 4);
+        });
+      };
+
+      if (scopeMode === 'X/Y') {
+        const centerY = height / 2;
+        const ampY = halfHeight * 0.9;
+        drawHGrid(centerY, ampY);
+        
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < displayDataL.length; i++) {
+          // X = Left, Y = Right (Lissajous)
+          const xx = (displayDataL[i] * gain * halfHeight * 0.9) + (width / 2);
+          const yy = (-displayDataR[i] * gain * halfHeight * 0.9) + halfHeight; // invert Y conventionally
+          if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+      } else {
+        // L/R Mode
+        let sliceWidth = width / displayDataL.length;
+
+        if (isStereo) {
+          drawHGrid(height / 4, (height / 4) * 0.9);
+          drawHGrid(height * 0.75, (height / 4) * 0.9);
+
+          const quarterHeight = height / 4;
+
+          // Left Trace (Top)
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 2;
           ctx.beginPath();
-          x = 0;
-          sliceWidth = width / probedData.length;
-          for (let i = 0; i < probedData.length; i++) {
-            const y = (probedData[i] * gain * halfHeight * 0.9) + halfHeight;
+          let x = 0;
+          for (let i = 0; i < displayDataL.length; i++) {
+            const y = (-displayDataL[i] * gain * quarterHeight * 0.9) + quarterHeight;
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             x += sliceWidth;
           }
           ctx.stroke();
-          ctx.setLineDash([]);
+
+          // Right Trace (Bottom)
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          x = 0;
+          for (let i = 0; i < displayDataR.length; i++) {
+            const y = (-displayDataR[i] * gain * quarterHeight * 0.9) + (height * 0.75);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            x += sliceWidth;
+          }
+          ctx.stroke();
+        } else {
+          drawHGrid(height / 2, halfHeight * 0.9);
+
+          // Mono Trace (Full Height)
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          let x = 0;
+          for (let i = 0; i < displayDataL.length; i++) {
+            const y = (-displayDataL[i] * gain * halfHeight * 0.9) + halfHeight;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            x += sliceWidth;
+          }
+          ctx.stroke();
+        }
+
+        // Probed Trace
+        if (probes.length > 0 && getProbedData) {
+          const probedData = getProbedData(probes[0]);
+          if (probedData && probedData.length > 0) {
+            ctx.strokeStyle = '#ffcc00';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            let x = 0;
+            sliceWidth = width / probedData.length;
+            for (let i = 0; i < probedData.length; i++) {
+              const y = (-probedData[i] * gain * halfHeight * 0.9) + halfHeight;
+              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+              x += sliceWidth;
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
         }
       }
 
@@ -144,46 +197,65 @@ const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getSpectrumData, ge
 
     render();
     return () => cancelAnimationFrame(animationFrame);
-  }, [getScopeData, getSpectrumData, getProbedData, probes, triggerMode, threshold, gain, zoom]);
+  }, [getScopeData, getProbedData, probes, triggerMode, scopeMode, threshold, gain, zoom]);
 
   return (
-    <div style={{ position: 'relative', height: '100%', width: '100%', border: '1px solid #333', background: '#000', borderRadius: '8px', overflow: 'hidden' }}>
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: '250px', width: '100%', border: '1px solid #333', background: '#000', borderRadius: '8px', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+      </div>
       
-      <button 
-        onClick={() => setShowSettings(!showSettings)} 
-        style={{ 
-          position: 'absolute', top: '8px', right: '8px', zIndex: 20, 
-          background: showSettings ? 'rgba(0, 122, 204, 0.4)' : 'rgba(255,255,255,0.1)', 
-          border: '1px solid rgba(255,255,255,0.2)', color: showSettings ? '#00ffcc' : '#aaa', 
-          borderRadius: '6px', padding: '4px', cursor: 'pointer', backdropFilter: 'blur(4px)',
-          transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}
-        title="Toggle Scope Settings"
-      >
-        <Settings2 size={16} />
-      </button>
-
-      {showSettings && (
-        <div style={{ 
-          position: 'absolute', top: '40px', right: '8px', display: 'flex', alignItems: 'center',
-          gap: '12px', background: 'rgba(20,20,20,0.85)', backdropFilter: 'blur(12px)', padding: '8px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', zIndex: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '8px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>SYNC</span>
-            <select value={triggerMode} onChange={(e) => setTriggerMode(e.target.value as TriggerMode)} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#00ffcc', fontSize: '9px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 4px' }}>
-              <option value="NONE">NONE</option>
-              <option value="AUTO">AUTO</option>
+      <div style={{ 
+        display: 'flex', alignItems: 'center', height: '64px', borderTop: '1px solid #222',
+        gap: '20px', background: '#080808', padding: '0 16px', width: '100%'
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>SYNC</span>
+          <select value={triggerMode} onChange={(e) => setTriggerMode(e.target.value as TriggerMode)} style={{ background: '#111', border: '1px solid #333', color: '#00ff00', fontSize: '10px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+            <option value="NONE">NONE</option>
+            <option value="AUTO">AUTO</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>MODE</span>
+          <select value={scopeMode} onChange={(e) => setScopeMode(e.target.value as ScopeMode)} style={{ background: '#111', border: '1px solid #333', color: '#00ff00', fontSize: '10px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+            <option value="L/R">L/R</option>
+            <option value="X/Y">X/Y</option>
+          </select>
+        </div>
+        <div style={{ width: '1px', height: '32px', background: '#222' }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>GAIN</span>
+          <select value={gain} onChange={(e) => setGain(parseFloat(e.target.value))} style={{ background: '#111', border: '1px solid #333', color: '#00ff00', fontSize: '10px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+            <option value={0.5}>0.5x</option>
+            <option value={1}>1.0x</option>
+            <option value={2}>2.0x</option>
+            <option value={5}>5.0x</option>
+            <option value={10}>10.0x</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>TIME</span>
+          <select value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} style={{ background: '#111', border: '1px solid #333', color: '#00ff00', fontSize: '10px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+            <option value={0.5}>x0.5</option>
+            <option value={1}>x1</option>
+            <option value={2}>x2</option>
+            <option value={5}>x5</option>
+            <option value={10}>x10</option>
+          </select>
+        </div>
+        {triggerMode === 'AUTO' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>THR</span>
+            <select value={threshold} onChange={(e) => setThreshold(parseFloat(e.target.value))} style={{ background: '#111', border: '1px solid #333', color: '#00ff00', fontSize: '10px', fontWeight: 'bold', borderRadius: '4px', outline: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+              <option value={0.0}>0.0</option>
+              <option value={0.1}>0.1</option>
+              <option value={0.2}>0.2</option>
+              <option value={0.5}>0.5</option>
             </select>
           </div>
-          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
-          <Knob label="GAIN" value={gain} min={0.1} max={5} onChange={setGain} size={28} color="#ffcc00" isFloat />
-          <Knob label="ZOOM" value={zoom} min={1} max={10} onChange={setZoom} size={28} color="#00ffcc" isFloat />
-          {triggerMode === 'AUTO' && (
-            <Knob label="THR" value={threshold} min={-1} max={1} onChange={setThreshold} size={28} color="#ff4444" isFloat />
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

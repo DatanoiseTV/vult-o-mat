@@ -448,9 +448,16 @@ class VultProcessor extends AudioWorkletProcessor {
               outL = result.t0 || 0;
               outR = result.t1 !== undefined ? result.t1 : outL;
             }
-          } else {
+          } else if (result !== undefined) {
             outL = typeof result === 'number' ? result : 0;
             outR = outL;
+          } else {
+            // Vult JS target returns tuples by mutating the context and returning undefined
+            let ctx = this.vultInstance.context || this.vultInstance._ctx;
+            if (ctx && ctx.process_ret_0 !== undefined) {
+              outL = ctx.process_ret_0 || 0;
+              outR = ctx.process_ret_1 !== undefined ? ctx.process_ret_1 : outL;
+            }
           }
           
           if (isNaN(outL) || !isFinite(outL)) outL = 0;

@@ -6,6 +6,7 @@ import { MIDIController } from './MIDIController';
 import VultEditor from './VultEditor';
 import type { VultEditorHandle } from './VultEditor';
 import ScopeView from './ScopeView';
+import SpectrumView from './SpectrumView';
 import LLMPane from './LLMPane';
 import VirtualMIDI from './VirtualMIDI';
 import StateInspector from './StateInspector';
@@ -318,7 +319,7 @@ fun low_shelf(in_sig: real, freq: real, gain: real) : real {
     return in_sig + lp * gain;
 }
 
-fun process(input: real) : real {
+fun process(input: real) {
     mem n1: real; mem n2: real; mem n3: real; mem n4: real; mem n5: real; mem n6: real;
     mem g1: bool; mem g2: bool; mem g3: bool; mem g4: bool; mem g5: bool; mem g6: bool;
     mem pb: real; mem vib_rate: real; mem vib_depth: real; mem pwm_amt: real; mem sub_amt: real;
@@ -500,7 +501,7 @@ const App: React.FC = () => {
 
   // UI States
   const [labHeight, setLabHeight] = useState(250);
-  const [sidePanelWidth, setSidePanelWidth] = useState(320);
+  const [sidePanelWidth, setSidePanelWidth] = useState(380);
   const [activeLabTab, setActiveLabTab] = useState<'lab' | 'seq' | 'midi'>('lab');
   
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
@@ -1105,13 +1106,13 @@ const App: React.FC = () => {
             </div>
             
             {/* TABBED LABORATORY RACK */}
-            {!isMobile && <div className="resize-handle" onMouseDown={startResizing(setLabHeight, 100, 600)} />}
-            <div className="lab-rack" style={{ height: isMobile ? '100%' : (activeLabTab === 'seq' ? 'max-content' : `${labHeight}px`), flex: isMobile ? 1 : 'none', display: isMobile && mobileView !== 'lab' ? 'none' : 'flex', flexDirection: 'column', background: '#1a1a1a', maxHeight: activeLabTab === 'seq' ? '85vh' : 'none', overflowY: activeLabTab === 'seq' ? 'auto' : 'visible' }}>
+            {!isMobile && <div className="resize-handle" onMouseDown={startResizing(setLabHeight, 100, 800)} />}
+            <div className="lab-rack" style={{ height: isMobile ? '100%' : `${labHeight}px`, flex: isMobile ? 1 : 'none', display: isMobile && mobileView !== 'lab' ? 'none' : 'flex', flexDirection: 'column', background: '#1a1a1a', overflowY: 'auto' }}>
               <div className="lab-tabs" style={{ display: 'flex', background: '#111', borderBottom: '1px solid #333', flexShrink: 0 }}>
                 <div className={`lab-tab ${activeLabTab === 'lab' ? 'active' : ''}`} onClick={() => setActiveLabTab('lab')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'lab' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'lab' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Sliders size={12} /> INPUTS
                 </div>
-                <div className={`lab-tab ${activeLabTab === 'seq' ? 'active' : ''}`} onClick={() => setActiveLabTab('seq')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'seq' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'seq' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div className={`lab-tab ${activeLabTab === 'seq' ? 'active' : ''}`} onClick={() => { setActiveLabTab('seq'); if (labHeight < 400) setLabHeight(550); }} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'seq' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'seq' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Music size={12} /> SEQUENCER
                 </div>
                 <div className={`lab-tab ${activeLabTab === 'midi' ? 'active' : ''}`} onClick={() => setActiveLabTab('midi')} style={{ padding: '8px 16px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', color: activeLabTab === 'midi' ? '#00ff00' : '#666', borderRight: '1px solid #333', background: activeLabTab === 'midi' ? '#1a1a1a' : 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1272,7 +1273,13 @@ const App: React.FC = () => {
             )}
             <div className="side-panel" style={{ display: isMobile && mobileView !== 'panels' ? 'none' : 'flex', width: isMobile ? '100%' : `${sidePanelWidth}px` }}>
             <div className="scope-section">              <div className="section-title"><AudioWaveform size={12} /> DUAL-TRACE ANALYZER</div>
-              <ScopeView getScopeData={() => audioEngineRef.current.getScopeData()} getSpectrumData={() => audioEngineRef.current.getSpectrumData()} getProbedData={(name) => audioEngineRef.current.getProbedStates()[name] || null} probes={activeProbes} />
+              <ScopeView getScopeData={() => audioEngineRef.current.getScopeData()} getProbedData={(name) => audioEngineRef.current.getProbedStates()[name] || null} probes={activeProbes} />
+              <div style={{ height: '150px', marginTop: '16px' }}>
+                <SpectrumView 
+                  getSpectrumData={() => audioEngineRef.current.getSpectrumData()} 
+                  getPeakFrequencies={(count) => audioEngineRef.current.getPeakFrequencies(count)} 
+                />
+              </div>
             </div>
             <div className="llm-section">
               {showHistory ? (
