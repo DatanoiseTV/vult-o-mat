@@ -48,7 +48,6 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
   const [activeAuthor, setActiveAuthor] = useState('all');
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [previewCode, setPreviewCode] = useState('');
-  const [showAllTags, setShowAllTags] = useState(false);
 
   const allPresets = communityGroups.flatMap(group => 
     group.presets.map((p: any) => ({ ...p, author: group.author }))
@@ -59,7 +58,7 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
   const allTags = allPresets.flatMap(p => p.meta?.tags || []);
   const tagFrequencies = allTags.reduce((acc, tag) => { acc[tag] = (acc[tag] || 0) + 1; return acc; }, {} as Record<string, number>);
   const topTags = Object.keys(tagFrequencies).sort((a, b) => tagFrequencies[b] - tagFrequencies[a]).slice(0, 10);
-  const tagsToShow = showAllTags ? Object.keys(tagFrequencies).sort() : topTags;
+  const tagsToShow = topTags;
 
   const filteredPresets = allPresets.filter(p => {
     const role = p.meta?.role || 'effect';
@@ -139,7 +138,7 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
               <div style={{ padding: '5px 20px 10px', fontSize: '10px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase' }}>Categories</div>
               <div style={{ padding: '0 10px 10px', display: 'flex', gap: '6px' }}>
                 {['all', 'instrument', 'effect', 'utility'].map(f => (
-                  <button key={f} onClick={() => { setActiveFilter(f); setActiveAuthor('all'); setActiveTag('all'); }} style={{
+                  <button key={f} onClick={() => { setActiveFilter(f); setActiveAuthor('all'); setActiveTags([]); }} style={{
                     flex: 1, background: activeFilter === f ? 'rgba(0,255,204,0.2)' : 'rgba(255,255,255,0.05)',
                     border: `1px solid ${activeFilter === f ? 'rgba(0,255,204,0.4)' : 'rgba(255,255,255,0.1)'}`,
                     borderRadius: '6px', padding: '6px 0', color: activeFilter === f ? '#00ffcc' : '#888', fontSize: '10px',
@@ -151,16 +150,16 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
               <div style={{ padding: '10px 20px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {tagsToShow.map(tag => (
                   <button key={tag} onClick={() => handleTagClick(tag)} style={{
-                    background: activeTags.includes(tag) ? 'rgba(255,204,0,0.2)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${activeTags.includes(tag) ? 'rgba(255,204,0,0.4)' : 'rgba(255,255,255,0.1)'}`,
-                    borderRadius: '4px', padding: '4px 8px', color: activeTags.includes(tag) ? '#ffcc00' : '#888', fontSize: '10px',
+                    background: activeTags.includes(tag) ? 'rgba(var(--accent-primary-rgb),0.2)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${activeTags.includes(tag) ? 'rgba(var(--accent-primary-rgb),0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '4px', padding: '4px 8px', color: activeTags.includes(tag) ? 'var(--accent-primary)' : '#888', fontSize: '10px',
                     fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s'
                   }}>{tag}</button>
                 ))}
               </div>
               <div style={{ padding: '10px 20px', fontSize: '10px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', borderTop: '1px solid rgba(255,255,255,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>Authors</div>
               {authors.map(author => (
-                <div key={author} onClick={() => { setActiveAuthor(author); setActiveFilter('all'); setActiveTag('all'); }} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 20px', cursor: 'pointer', background: activeAuthor === author ? 'rgba(0,122,204,0.2)' : 'transparent' }}>
+                <div key={author} onClick={() => { setActiveAuthor(author); setActiveFilter('all'); setActiveTags([]); }} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 20px', cursor: 'pointer', background: activeAuthor === author ? 'rgba(0,122,204,0.2)' : 'transparent' }}>
                   <img src={`https://github.com/${author}.png`} style={{ width: '24px', height: '24px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)' }} />
                   <span style={{ fontWeight: 'bold', color: activeAuthor === author ? '#fff' : '#888' }}>{author}</span>
                 </div>
@@ -219,7 +218,7 @@ const CommunityPresetsModal: React.FC<CommunityPresetsModalProps> = ({ onClose, 
                   <button onClick={() => handleLoad(selectedPreset.path, selectedPreset.name)} disabled={loadingPreset === selectedPreset.path} style={{ flex: 1, background: 'rgba(0,122,204,0.4)', border: '1px solid #007acc', borderRadius: '6px', padding: '12px', color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>
                     {loadingPreset === selectedPreset.path ? <Activity size={16} className="animate-spin" /> : 'LOAD'}
                   </button>
-                  <button onClick={() => handleInsert(selectedPreset.path)} disabled={loadingPreset === selectedPreset.path} style={{ flex: 1, background: 'rgba(255,204,0,0.2)', border: '1px solid #ffcc00', borderRadius: '6px', padding: '12px', color: '#ffcc00', fontWeight: 'bold', fontSize: '14px' }}>
+                  <button onClick={() => handleInsert(selectedPreset.path)} disabled={loadingPreset === selectedPreset.path} style={{ flex: 1, background: 'rgba(var(--accent-primary-rgb),0.2)', border: '1px solid var(--accent-primary)', borderRadius: '6px', padding: '12px', color: 'var(--accent-primary)', fontWeight: 'bold', fontSize: '14px' }}>
                     {loadingPreset === selectedPreset.path ? <Activity size={16} className="animate-spin" /> : 'INSERT'}
                   </button>
                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, Sparkles, Minimize2, Maximize2 } from 'lucide-react';
+import { Send, Loader2, Settings, Activity, StopCircle, ChevronDown, ChevronRight, Sparkles, Maximize2 } from 'lucide-react';
 
 export interface LLMPaneHandle {
   /** Programmatically send a message to the agent, as if the user typed it. */
@@ -1597,7 +1597,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
           <button 
             onClick={handleFeelCurious} 
             disabled={isLoading || isInspirationLoading}
-            style={{ background: 'transparent', border: 'none', color: '#ffcc00', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
+            style={{ background: 'transparent', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
             title="I Feel Curious (Get Inspiration)"
           >
             <Sparkles size={16} />
@@ -1609,7 +1609,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
       </div>
       
       {showSettings && (
-        <div style={{ padding: '12px', background: '#252526', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ padding: '12px', background: 'var(--bg-surface)', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
             <label style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input type="radio" checked={provider === 'gemini'} onChange={() => handleSaveSettings('gemini', endpoint, apiKey, modelName)} />
@@ -1649,7 +1649,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
             alignSelf: m.role === 'user' ? 'flex-end' : (m.role === 'system' || m.role === 'thought' ? 'center' : 'flex-start'),
             width: m.role === 'system' || m.role === 'thought' ? '100%' : 'auto',
             background: m.role === 'user' ? 'rgba(0, 122, 204, 0.4)' : (m.role === 'assistant' ? 'rgba(255, 255, 255, 0.05)' : (m.role === 'system' ? 'rgba(0,0,0,0.3)' : 'transparent')),
-            borderLeft: m.role === 'system' ? '2px solid rgba(255,204,0,0.5)' : (m.role === 'thought' ? '2px solid rgba(255,255,255,0.1)' : 'none'),
+            borderLeft: m.role === 'system' ? '2px solid rgba(var(--accent-primary-rgb),0.5)' : (m.role === 'thought' ? '2px solid rgba(255,255,255,0.1)' : 'none'),
             color: m.role === 'system' ? '#aaa' : (m.role === 'thought' ? '#777' : '#fff'),
             padding: m.role === 'system' || m.role === 'thought' ? '6px 12px' : '10px 14px',
             borderRadius: m.role === 'system' || m.role === 'thought' ? '6px' : '16px',
@@ -1683,7 +1683,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
                 {m.choices && (
                   <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {m.choices.map(c => (
-                      <button key={c.value} onClick={() => handleChoice(c.value)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#ffcc00', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s', fontWeight: 'bold' }}>{c.label}</button>
+                      <button key={c.value} onClick={() => handleChoice(c.value)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--accent-primary)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s', fontWeight: 'bold' }}>{c.label}</button>
                     ))}
                   </div>
                 )}

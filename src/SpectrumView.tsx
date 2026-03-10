@@ -137,13 +137,13 @@ const SpectrumView: React.FC<SpectrumViewProps> = ({ getSpectrumData, getPeakFre
             // Outer glow
             ctx.beginPath();
             ctx.arc(x, y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 204, 0, 0.2)';
+            ctx.fillStyle = 'rgba(var(--accent-primary-rgb), 0.2)';
             ctx.fill();
 
             // Inner dot
             ctx.beginPath();
             ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffcc00';
+            ctx.fillStyle = 'var(--accent-primary)';
             ctx.fill();
           }
         });
@@ -286,7 +286,7 @@ const SpectrumView: React.FC<SpectrumViewProps> = ({ getSpectrumData, getPeakFre
           {peaks.length > 0 ? peaks.map((p, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
               <span style={{ fontSize: '9px', color: '#555', fontWeight: 'bold' }}>P{i + 1}</span>
-              <span style={{ fontSize: '12px', color: '#ffcc00', fontWeight: 'bold', fontFamily: 'monospace' }}>{p.frequency}</span>
+              <span style={{ fontSize: '12px', color: 'var(--accent-primary)', fontWeight: 'bold', fontFamily: 'monospace' }}>{p.frequency}</span>
               <span style={{ fontSize: '9px', color: '#666' }}>Hz</span>
             </div>
           )) : (

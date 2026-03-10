@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, Cpu, Zap, Activity, Save, Download, Sliders, Code2, History, Music, Keyboard, Globe, Search, Code, Wrench, HardDrive, PackageOpen } from 'lucide-react';
+import { Play, Square, Zap, Activity, Download, Sliders, Code2, History, Music, Keyboard, Code, Wrench, HardDrive, PackageOpen } from 'lucide-react';
 import { AudioEngine } from './AudioEngine';
 import type { InputSource, SourceType } from './AudioEngine';
 import { MIDIController } from './MIDIController';
@@ -455,7 +455,7 @@ const App: React.FC = () => {
   const [savedProjects, setSavedProjects] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [status, setStatus] = useState('Idle');
-  const [audioStatus, setAudioStatus] = useState<{ state: string; sampleRate: number }>({ state: 'suspended', sampleRate: 0 });
+  const [_audioStatus, setAudioStatus] = useState<{ state: string; sampleRate: number }>({ state: 'suspended', sampleRate: 0 });
   const [editorMarkers, setEditorMarkers] = useState<any[]>([]);
   const [showInspector, setShowInspector] = useState(false);
   const [activeProbes, setActiveProbes] = useState<string[]>([]);
@@ -605,12 +605,12 @@ const App: React.FC = () => {
         (c, v) => {
           ae.sendControlChange(c, v);
           if (midiCcLedRef.current) {
-            midiCcLedRef.current.style.background = '#ffcc00'; // Yellow for CC
+            midiCcLedRef.current.style.background = 'var(--accent-primary)'; // Yellow for CC
             if (midiPulseTimeouts.current.cc) clearTimeout(midiPulseTimeouts.current.cc);
             midiPulseTimeouts.current.cc = setTimeout(() => { if (midiCcLedRef.current) midiCcLedRef.current.style.background = '#333'; }, 100);
           }
         },
-        (s) => {
+        (_s) => {
           // Midi status string no longer displayed, but still update inputs
           setMidiInputs(midiControllerRef.current?.getInputs() || []);
         }
@@ -625,7 +625,7 @@ const App: React.FC = () => {
       ae.onMidiActivity((kind) => {
         const isNote = kind.startsWith('note');
         const ref = isNote ? midiNoteLedRef : midiCcLedRef;
-        const color = isNote ? '#00ffcc' : '#ffcc00';
+        const color = isNote ? '#00ffcc' : 'var(--accent-primary)';
         if (ref.current) {
            ref.current.style.background = color;
            ref.current.style.boxShadow = `0 0 5px ${color}`;
@@ -943,8 +943,8 @@ const App: React.FC = () => {
     <div className="app-container">
       <div className="sidebar">
         <div className="logo" style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-          <Zap color="#ffcc00" size={22} />
-          <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#ffcc00', letterSpacing: '1px' }}>DSPLAB</span>
+          <Zap color="var(--accent-primary)" size={22} />
+          <span style={{ fontSize: '8px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px' }}>DSPLAB</span>
         </div>
         {isMobile ? (
           <>
@@ -1000,7 +1000,7 @@ const App: React.FC = () => {
             style={{
               background: 'rgba(0,0,0,0.4)',
               border: '1px solid rgba(255,255,255,0.1)',
-              color: '#ffcc00',
+              color: 'var(--accent-primary)',
               fontWeight: '800',
               width: '140px',
               padding: '6px 12px',
@@ -1010,7 +1010,7 @@ const App: React.FC = () => {
               transition: 'all 0.2s',
               boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#ffcc00'}
+            onFocus={(e) => e.target.style.borderColor = 'var(--accent-primary)'}
             onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
           />
           <button className={`play-btn ${isPlaying ? 'playing' : ''}`} onClick={handleTogglePlay}>
@@ -1125,12 +1125,12 @@ const App: React.FC = () => {
                       {inputs.map((input, i) => (
                         <div key={i} className="input-strip" style={{ position: 'relative' }}>
                           <div className="strip-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: 'bold', fontSize: '11px', letterSpacing: '0.5px', color: '#ffcc00', textShadow: '0 0 5px rgba(255,204,0,0.4)' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '11px', letterSpacing: '0.5px', color: 'var(--accent-primary)', textShadow: '0 0 5px rgba(var(--accent-primary-rgb),0.4)' }}>
                               {input.name.toUpperCase()}
                             </span>
                             {(input.type === 'impulse' || input.type === 'step') && (
-                              <button onClick={() => audioEngineRef.current.triggerGenerator(i)} style={{ background: 'rgba(255,204,0,0.1)', border: '1px solid rgba(255,204,0,0.3)', borderRadius: '4px', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Zap size={10} color="#ffcc00" />
+                              <button onClick={() => audioEngineRef.current.triggerGenerator(i)} style={{ background: 'rgba(var(--accent-primary-rgb),0.1)', border: '1px solid rgba(var(--accent-primary-rgb),0.3)', borderRadius: '4px', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Zap size={10} color="var(--accent-primary)" />
                               </button>
                             )}
                           </div>
@@ -1159,11 +1159,11 @@ const App: React.FC = () => {
 
                             {input.type === 'lfo' && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', alignItems: 'center' }}>
-                                <select value={input.lfoShape || 'sine'} onChange={(e) => updateInput(i, { lfoShape: e.target.value as any })} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#ffcc00', fontSize: '9px', padding: '2px 4px', borderRadius: '4px', outline: 'none', width: '90%', textAlign: 'center' }}>
+                                <select value={input.lfoShape || 'sine'} onChange={(e) => updateInput(i, { lfoShape: e.target.value as any })} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--accent-primary)', fontSize: '9px', padding: '2px 4px', borderRadius: '4px', outline: 'none', width: '90%', textAlign: 'center' }}>
                                   <option value="sine">SINE</option><option value="triangle">TRI</option><option value="square">SQUARE</option><option value="sawtooth">SAW</option>
                                 </select>
                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                  <Knob label="RATE" value={input.lfoRate || 1} min={0.1} max={50} onChange={(val) => updateInput(i, { lfoRate: val })} size={28} color="#ffcc00" isFloat />
+                                  <Knob label="RATE" value={input.lfoRate || 1} min={0.1} max={50} onChange={(val) => updateInput(i, { lfoRate: val })} size={28} color="var(--accent-primary)" isFloat />
                                   <Knob label="DEPTH" value={input.lfoDepth || 1} min={0} max={10} onChange={(val) => updateInput(i, { lfoDepth: val })} size={28} color="#ff4444" isFloat />
                                 </div>
                               </div>
@@ -1171,7 +1171,7 @@ const App: React.FC = () => {
 
                             {input.type === 'cv' && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-                                <Knob label="VALUE" value={input.value} min={0} max={1} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={40} color="#ffcc00" />
+                                <Knob label="VALUE" value={input.value} min={0} max={1} isFloat={true} onChange={(val) => updateInput(i, { value: val })} size={40} color="var(--accent-primary)" />
                                 <button onClick={() => updateInput(i, { isCycling: !input.isCycling })} style={{ background: input.isCycling ? 'rgba(0,255,0,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${input.isCycling ? 'rgba(0,255,0,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '4px', padding: '4px 12px', cursor: 'pointer', fontSize: '9px', color: input.isCycling ? '#00ff00' : '#888', fontWeight: 'bold' }}>
                                   AUTO SWEEP
                                 </button>
@@ -1247,7 +1247,7 @@ const App: React.FC = () => {
                         </div>
                         <button
                           onClick={handleEnableMIDI}
-                          style={{ background: '#ffcc00', color: '#000', border: 'none', borderRadius: '3px', padding: '5px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0 }}
+                          style={{ background: 'var(--accent-primary)', color: '#000', border: 'none', borderRadius: '3px', padding: '5px 12px', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0 }}
                         >
                           Enable MIDI
                         </button>
@@ -1286,16 +1286,16 @@ const App: React.FC = () => {
             </div>
             <div className="llm-section">
               {showHistory ? (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1e1e1e', borderLeft: '1px solid #333' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-base)', borderLeft: '1px solid #333' }}>
                   <div style={{ padding: '12px', borderBottom: '1px solid #333', fontWeight: 'bold', fontSize: '14px', color: '#aaa', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><History size={16} /> VERSION HISTORY</div>
-                    <button onClick={() => saveSnapshot("Manual Snapshot")} style={{ background: '#333', border: '1px solid #444', color: '#ffcc00', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>SNAPSHOT</button>
+                    <button onClick={() => saveSnapshot("Manual Snapshot")} style={{ background: '#333', border: '1px solid #444', color: 'var(--accent-primary)', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', cursor: 'pointer' }}>SNAPSHOT</button>
                   </div>
                   <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
                     {codeHistory.length === 0 && <div style={{ padding: '20px', color: '#666', textAlign: 'center', fontSize: '12px' }}>No snapshots yet.</div>}
                     {codeHistory.map((entry, idx) => (
                       <div key={idx} style={{ padding: '10px', borderBottom: '1px solid #333', cursor: 'pointer', background: code === entry.code ? '#2d2d2d' : 'transparent', borderRadius: '4px', marginBottom: '4px', transition: 'all 0.2s' }} onClick={() => { setOriginalCode(code); setCode(entry.code); setDiffMode(true); }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}><span style={{ fontSize: '11px', color: '#ffcc00', fontWeight: 'bold' }}>{entry.msg}</span><span style={{ fontSize: '9px', color: '#666' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}><span style={{ fontSize: '11px', color: 'var(--accent-primary)', fontWeight: 'bold' }}>{entry.msg}</span><span style={{ fontSize: '9px', color: '#666' }}>{new Date(entry.timestamp).toLocaleTimeString()}</span></div>
                         <div style={{ fontSize: '10px', color: '#888', fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getCodeSummary(entry.code)}</div>
                       </div>
                     ))}
@@ -1336,7 +1336,7 @@ const App: React.FC = () => {
             padding: '24px', width: '340px', display: 'flex', flexDirection: 'column', gap: '16px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ color: '#ffcc00', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Export Code</span>
+              <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Export Code</span>
               <span style={{ color: '#555', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }} onClick={() => setShowExportModal(false)}>×</span>
             </div>
 
@@ -1356,7 +1356,7 @@ const App: React.FC = () => {
                       value={opt.value}
                       checked={exportTarget === opt.value}
                       onChange={() => setExportTarget(opt.value)}
-                      style={{ accentColor: '#ffcc00' }}
+                      style={{ accentColor: 'var(--accent-primary)' }}
                     />
                     <span style={{ color: exportTarget === opt.value ? '#e0e0e0' : '#888', fontSize: '13px' }}>{opt.label}</span>
                     <span style={{ marginLeft: 'auto', color: '#444', fontSize: '11px', fontFamily: 'monospace' }}>{opt.ext}</span>
@@ -1395,7 +1395,7 @@ const App: React.FC = () => {
               onClick={handleExport}
               disabled={exportStatus === 'Generating...'}
               style={{
-                background: '#ffcc00', color: '#000', border: 'none', borderRadius: '4px',
+                background: 'var(--accent-primary)', color: '#000', border: 'none', borderRadius: '4px',
                 padding: '9px 0', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px',
                 textTransform: 'uppercase', cursor: exportStatus === 'Generating...' ? 'not-allowed' : 'pointer',
                 opacity: exportStatus === 'Generating...' ? 0.6 : 1

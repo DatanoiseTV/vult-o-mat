@@ -169,7 +169,7 @@ const CCLane: React.FC<{ track: CCTrack, length: number, onChange: (steps: numbe
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: '#111', padding: '6px 0', borderRadius: '4px', border: '1px solid #333' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 8px' }}>
-        <span style={{ fontSize: '10px', color: '#ffcc00', fontWeight: 'bold' }}>{ccName}</span>
+        <span style={{ fontSize: '10px', color: 'var(--accent-primary)', fontWeight: 'bold' }}>{ccName}</span>
         <button onClick={onRemove} style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '12px' }}>&times;</button>
       </div>
       <div style={{ display: 'flex', gap: '4px', position: 'relative' }}>
@@ -187,7 +187,7 @@ const CCLane: React.FC<{ track: CCTrack, length: number, onChange: (steps: numbe
                 className={`cc-step seq-step-${i}`}
                 style={{ width: '28px', flexShrink: 0, height: '40px', background: '#161b22', border: '1px solid #222', borderRadius: '2px', position: 'relative', opacity: isActive ? 1 : 0.3 }}
               >
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${pct}%`, background: '#ffcc00', borderRadius: '0 0 2px 2px', opacity: 0.15, pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${pct}%`, background: 'var(--accent-primary)', borderRadius: '0 0 2px 2px', opacity: 0.15, pointerEvents: 'none' }} />
                 <div style={{ position: 'absolute', top: '-12px', left: 0, width: '100%', textAlign: 'center', fontSize: '8px', color: '#55', opacity: isActive ? 1 : 0 }}>{safeSteps[i * 4] || 0}</div>
               </div>
             )
@@ -196,9 +196,9 @@ const CCLane: React.FC<{ track: CCTrack, length: number, onChange: (steps: numbe
 
         {/* SVG overlay for drawing the curve */}
         <svg style={{ position: 'absolute', left: '54px', top: 0, width: `${32 * 32}px`, height: '40px', pointerEvents: 'none' }}>
-           <path d={svgD} fill="none" stroke="#ffcc00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+           <path d={svgD} fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
            {safeSteps.slice(0, length * 4).map((val, i) => (
-             <circle key={i} cx={i * 8 + 14} cy={40 - ((val || 0) / 127) * 40} r={i % 4 === 0 ? "2.5" : "1.5"} fill="#ffcc00" opacity={0.8} />
+             <circle key={i} cx={i * 8 + 14} cy={40 - ((val || 0) / 127) * 40} r={i % 4 === 0 ? "2.5" : "1.5"} fill="var(--accent-primary)" opacity={0.8} />
            ))}
         </svg>
 
@@ -311,10 +311,10 @@ const Sequencer: React.FC<SequencerProps> = ({
         
         {/* Mode Toggle */}
         <div style={{ display: 'flex', background: '#111', padding: '2px', borderRadius: '4px', border: '1px solid #333' }}>
-           <button onClick={() => setMode('melody')} style={{ background: mode === 'melody' ? '#222' : 'transparent', color: mode === 'melody' ? '#ffcc00' : '#666', border: 'none', borderRadius: '3px', padding: '4px 8px', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+           <button onClick={() => setMode('melody')} style={{ background: mode === 'melody' ? '#222' : 'transparent', color: mode === 'melody' ? 'var(--accent-primary)' : '#666', border: 'none', borderRadius: '3px', padding: '4px 8px', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
              <Music size={10} /> MELODY
            </button>
-           <button onClick={() => setMode('drum')} style={{ background: mode === 'drum' ? '#222' : 'transparent', color: mode === 'drum' ? '#ffcc00' : '#666', border: 'none', borderRadius: '3px', padding: '4px 8px', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+           <button onClick={() => setMode('drum')} style={{ background: mode === 'drum' ? '#222' : 'transparent', color: mode === 'drum' ? 'var(--accent-primary)' : '#666', border: 'none', borderRadius: '3px', padding: '4px 8px', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
              <Drum size={10} /> DRUMS
            </button>
         </div>
@@ -360,7 +360,7 @@ const Sequencer: React.FC<SequencerProps> = ({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Timer size={14} color="#888" />
-          <input type="number" value={bpm} onChange={(e) => setBpm(parseInt(e.target.value) || 120)} className="bpm-input" style={{ width: '60px', padding: '4px 6px', fontSize: '12px', background: '#111', color: '#ffcc00', border: '1px solid #333', borderRadius: '4px', outline: 'none', fontFamily: 'monospace', textAlign: 'center' }} />
+          <input type="number" value={bpm} onChange={(e) => setBpm(parseInt(e.target.value) || 120)} className="bpm-input" style={{ width: '60px', padding: '4px 6px', fontSize: '12px', background: '#111', color: 'var(--accent-primary)', border: '1px solid #333', borderRadius: '4px', outline: 'none', fontFamily: 'monospace', textAlign: 'center' }} />
           <span style={{ fontSize: '10px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>BPM</span>
         </div>
 
@@ -370,7 +370,7 @@ const Sequencer: React.FC<SequencerProps> = ({
             type="number" min="1" max="32" value={length} 
             onChange={(e) => setLength(Math.max(1, Math.min(32, parseInt(e.target.value) || 16)))} 
             className="bpm-input" 
-            style={{ width: '50px', padding: '4px 6px', fontSize: '12px', background: '#111', color: '#ffcc00', border: '1px solid #333', borderRadius: '4px', outline: 'none', fontFamily: 'monospace', textAlign: 'center' }}
+            style={{ width: '50px', padding: '4px 6px', fontSize: '12px', background: '#111', color: 'var(--accent-primary)', border: '1px solid #333', borderRadius: '4px', outline: 'none', fontFamily: 'monospace', textAlign: 'center' }}
           />
           <span style={{ fontSize: '10px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>LEN</span>
         </div>
@@ -380,7 +380,7 @@ const Sequencer: React.FC<SequencerProps> = ({
             type="number" step="0.1" min="0.1" max="1.0" value={gateLength} 
             onChange={(e) => setGateLength(Math.max(0.1, Math.min(1.0, parseFloat(e.target.value) || 0.5)))} 
             className="bpm-input" 
-            style={{ width: '55px', padding: '4px 6px', fontSize: '12px', background: '#111', color: '#ffcc00', border: '1px solid #333', borderRadius: '4px', outline: 'none', fontFamily: 'monospace', textAlign: 'center' }}
+            style={{ width: '55px', padding: '4px 6px', fontSize: '12px', background: '#111', color: 'var(--accent-primary)', border: '1px solid #333', borderRadius: '4px', outline: 'none', fontFamily: 'monospace', textAlign: 'center' }}
           />
           <span style={{ fontSize: '10px', color: '#888', fontWeight: 'bold', letterSpacing: '0.5px' }}>GATE</span>
         </div>
@@ -396,7 +396,7 @@ const Sequencer: React.FC<SequencerProps> = ({
                {GRID_NOTES.map(noteIdx => {
                   const isBlackKey = [1, 3, 6, 8, 10].includes(noteIdx);
                   return (
-                    <div key={noteIdx} style={{ height: '18px', background: isBlackKey ? '#0a0a0a' : '#1e1e1e', color: isBlackKey ? '#555' : '#888', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px' }}>
+                    <div key={noteIdx} style={{ height: '18px', background: isBlackKey ? '#0a0a0a' : 'var(--bg-base)', color: isBlackKey ? '#555' : '#888', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px' }}>
                       {NOTES[noteIdx]}
                     </div>
                   )
@@ -446,7 +446,7 @@ const Sequencer: React.FC<SequencerProps> = ({
                      <DragNumber value={stepOctave} onChange={(v) => updateMelodyStep(i, { note: (v+1)*12 + stepNoteIdx })} min={0} max={9} label="Octave" />
                      
                      <div onClick={() => updateMelodyStep(i, { active: !step.active })} style={{ height: '14px', background: step.active ? '#ff3366' : '#222', borderRadius: '2px', cursor: 'pointer', border: '1px solid #111' }} title="Gate" />
-                     <div onClick={() => updateMelodyStep(i, { accent: !step.accent })} style={{ height: '14px', background: step.accent ? '#ffcc00' : '#222', borderRadius: '2px', cursor: 'pointer', border: '1px solid #111' }} title="Accent" />
+                     <div onClick={() => updateMelodyStep(i, { accent: !step.accent })} style={{ height: '14px', background: step.accent ? 'var(--accent-primary)' : '#222', borderRadius: '2px', cursor: 'pointer', border: '1px solid #111' }} title="Accent" />
                      <div onClick={() => updateMelodyStep(i, { slide: !step.slide })} style={{ height: '14px', background: step.slide ? '#7ec8ff' : '#222', borderRadius: '2px', cursor: 'pointer', border: '1px solid #111' }} title="Slide" />
                      
                      <div className={`step-number seq-step-${i}`} style={{ textAlign: 'center', marginTop: '2px' }}>{i + 1}</div>
@@ -466,7 +466,7 @@ const Sequencer: React.FC<SequencerProps> = ({
            </div>
            {drumTracks.map((track, tIdx) => (
              <div key={tIdx} style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '2px 0' }}>
-               <div style={{ width: '50px', flexShrink: 0, fontSize: '10px', fontWeight: 'bold', color: '#ffcc00', textAlign: 'right', paddingRight: '10px', boxSizing: 'border-box' }}>{track.name}</div>
+               <div style={{ width: '50px', flexShrink: 0, fontSize: '10px', fontWeight: 'bold', color: 'var(--accent-primary)', textAlign: 'right', paddingRight: '10px', boxSizing: 'border-box' }}>{track.name}</div>
                {track.steps.map((st: any, i: number) => (
                  <div key={i} className={`drum-cell seq-step-${i}`} onClick={() => updateDrumStep(tIdx, i, !st.active)} style={{
                    width: '28px', flexShrink: 0, height: '24px', background: st.active ? '#ff3366' : (Math.floor(i/4)%2 === 0 ? '#111' : '#161b22'),

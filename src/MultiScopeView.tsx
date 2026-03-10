@@ -64,7 +64,7 @@ const MultiScopeView: React.FC<MultiScopeViewProps> = ({ probes, onStateUpdate }
     let animationFrame: number;
 
     const colors = [
-      '#ffcc00', '#00ff00', '#00ccff', '#ff00ff', '#ff5500', '#00ffaa',
+      'var(--accent-primary)', '#00ff00', '#00ccff', '#ff00ff', '#ff5500', '#00ffaa',
     ];
 
     const render = () => {

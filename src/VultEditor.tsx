@@ -335,7 +335,7 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
     const pts  = data.map((v, i) => `${i * 3},${30 - ((v - min) / range) * 30}`).join(' ');
     return (
       <svg width="120" height="35" style={{ marginTop: '8px', borderTop: '1px solid #444', paddingTop: '4px' }}>
-        <polyline points={pts} fill="none" stroke="#ffcc00" strokeWidth="1.5" />
+        <polyline points={pts} fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" />
       </svg>
     );
   };
@@ -381,14 +381,14 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
       {hoverData && !diffMode && (
         <div style={{
           position: 'fixed', left: hoverData.x, top: hoverData.y,
-          background: '#252526', border: '1px solid #454545', borderRadius: '4px',
+          background: 'var(--bg-surface)', border: '1px solid #454545', borderRadius: '4px',
           padding: '8px 12px', zIndex: 10000, boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
           pointerEvents: 'none', display: 'flex', flexDirection: 'column',
         }}>
           <div style={{ fontSize: '10px', color: '#888', fontWeight: 'bold', marginBottom: '2px' }}>
             LIVE STATE: {hoverData.word}
           </div>
-          <div style={{ fontSize: '14px', color: '#ffcc00', fontFamily: 'monospace' }}>
+          <div style={{ fontSize: '14px', color: 'var(--accent-primary)', fontFamily: 'monospace' }}>
             {typeof hoverData.value === 'number'
               ? hoverData.value.toFixed(6)
               : String(hoverData.value)}

@@ -11,7 +11,7 @@ export interface KnobProps {
   isFloat?: boolean;
 }
 
-export const Knob: React.FC<KnobProps> = ({ value, min, max, label, onChange, size = 32, color = '#ffcc00', isFloat = false }) => {
+export const Knob: React.FC<KnobProps> = ({ value, min, max, label, onChange, size = 32, color = 'var(--accent-primary)', isFloat = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const startY = useRef(0);
   const startValue = useRef(0);
@@ -99,7 +99,7 @@ export const Knob: React.FC<KnobProps> = ({ value, min, max, label, onChange, si
   return (
     <div className="knob-unit" style={{ width: size + 10, userSelect: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
       {ccNum && (
-        <div style={{ fontSize: '11px', fontWeight: '900', color: '#ffcc00', lineHeight: '1', marginBottom: '1px' }}>
+        <div style={{ fontSize: '11px', fontWeight: '900', color: 'var(--accent-primary)', lineHeight: '1', marginBottom: '1px' }}>
           {ccNum}
         </div>
       )}

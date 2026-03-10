@@ -29,8 +29,6 @@ export class AudioEngine {
   private analyserL: AnalyserNode | null = null;
   private analyserR: AnalyserNode | null = null;
   private splitter: ChannelSplitterNode | null = null;
-  private inputStream: MediaStream | null = null;
-  private inputNode: MediaStreamAudioSourceNode | null = null;
   private scopeBufferL: Float32Array;
   private scopeBufferR: Float32Array;
   private spectrumBuffer: Uint8Array;

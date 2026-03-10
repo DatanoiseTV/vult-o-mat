@@ -169,7 +169,7 @@ const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getProbedData, prob
         if (probes.length > 0 && getProbedData) {
           const probedData = getProbedData(probes[0]);
           if (probedData && probedData.length > 0) {
-            ctx.strokeStyle = '#ffcc00';
+            ctx.strokeStyle = 'var(--accent-primary)';
             ctx.lineWidth = 1.5;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();

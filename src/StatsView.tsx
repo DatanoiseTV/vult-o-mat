@@ -51,7 +51,7 @@ const StatsView: React.FC<StatsViewProps> = ({ getDSPStats }) => {
       borderRadius: '4px', padding: '6px 10px', overflow: 'hidden',
     }}>
       <div style={{ display: 'flex', gap: '16px' }}>
-        {renderPanel('LEFT ◀', stats.L, '#ffcc00')}
+        {renderPanel('LEFT ◀', stats.L, 'var(--accent-primary)')}
         <div style={{ width: '1px', background: '#222', alignSelf: 'stretch' }} />
         {renderPanel('RIGHT ▶', stats.R, '#00ccff')}
       </div>

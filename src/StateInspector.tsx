@@ -43,7 +43,7 @@ const StateInspector: React.FC<StateInspectorProps> = ({ onStateUpdate, onProbe,
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1e1e1e', borderLeft: '1px solid #333', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-base)', borderLeft: '1px solid #333', overflow: 'hidden' }}>
       <div style={{ padding: '12px', borderBottom: '1px solid #333', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Search size={14} color="#666" />
         <input 
@@ -89,7 +89,7 @@ const StateInspector: React.FC<StateInspectorProps> = ({ onStateUpdate, onProbe,
                   </td>
                   <td style={{ 
                     fontSize: '9px', 
-                    color: '#ffcc00', 
+                    color: 'var(--accent-primary)', 
                     padding: '6px 4px', 
                     textAlign: 'right',
                     overflow: 'hidden'
@@ -101,7 +101,7 @@ const StateInspector: React.FC<StateInspectorProps> = ({ onStateUpdate, onProbe,
                         onChange={(e) => setEditValue(e.target.value)}
                         onBlur={commitEdit}
                         onKeyDown={(e) => e.key === 'Enter' && commitEdit()}
-                        style={{ width: '100%', background: '#000', border: '1px solid #ffcc00', color: '#ffcc00', fontSize: '9px', textAlign: 'right' }}
+                        style={{ width: '100%', background: '#000', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', fontSize: '9px', textAlign: 'right' }}
                       />
                     ) : (
                       typeof val === 'number' ? val.toFixed(5) : String(val)
