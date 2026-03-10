@@ -68,6 +68,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
   const [currentTurn, setCurrentTurn] = useState(0);
   const [turnStartTime, setTurnStartTime] = useState<number | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [agentMemory, setAgentMemory] = useState("");
   const [elapsedTurn, setElapsedTurn] = useState(0);
   const [elapsedSession, setElapsedSession] = useState(0);
   
@@ -150,6 +151,11 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
       return updated;
     });
   };
+  const getFullSystemPrompt = () => {
+    const memoryContext = agentMemory ? `\n### AGENT LONG-TERM MEMORY (PERSISTENT FACTS):\n${agentMemory}\n` : '';
+    return `${systemPrompt}\n${memoryContext}\nALWAYS be verbose and detailed about your DSP logic and actions. Explain WHY you are making changes.`;
+  };
+
 
   // Expose sendMessage so parent can trigger agent programmatically
   // (e.g. from Monaco editor right-click actions)
@@ -192,6 +198,9 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
 
     const savedDisplayMsgs = localStorage.getItem('llm_display_messages');
     if (savedDisplayMsgs) setDisplayMessages(JSON.parse(savedDisplayMsgs));
+
+    const savedMemory = localStorage.getItem('dsplab_agent_memory');
+    if (savedMemory) setAgentMemory(savedMemory);
   }, []);
 
   // Persist messages whenever they change
@@ -202,6 +211,10 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
   useEffect(() => {
     localStorage.setItem('llm_display_messages', JSON.stringify(displayMessages));
   }, [displayMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('dsplab_agent_memory', agentMemory);
+  }, [agentMemory]);
 
   const handleClearChat = () => {
     setMessages([]);
@@ -587,6 +600,22 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
         }
       },
       {
+        name: "store_memory",
+        description: "Stores a persistent technical fact, engineering preference, or project-specific detail in your long-term Prompt Memory. This memory persists across sessions and models. Use this to remember user stylistic choices, complex algorithm details, or verified DSP findings.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            fact: { type: "STRING", description: "The specific fact or preference to remember (e.g. 'User prefers 0-1 range for all internal variables')." }
+          },
+          required: ["fact"]
+        }
+      },
+      {
+        name: "get_memory",
+        description: "Retrieves all currently stored persistent memories from your long-term Prompt Memory. Use this at the start of a session or when uncertain about user preferences.",
+        parameters: { type: "OBJECT", properties: {} }
+      },
+      {
         name: "multi_edit",
         description: "Applies multiple line-block edits in a single turn. Automatically handles line shifts. Provide edits in any order.",
         parameters: {
@@ -723,7 +752,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
     const payload = {
       contents: mappedContents,
       systemInstruction: { 
-        parts: [{ text: systemPrompt + "\nALWAYS be verbose and detailed about your DSP logic and actions. Explain WHY you are making changes." }] 
+        parts: [{ text: getFullSystemPrompt() }] 
       },
       tools: [{ functionDeclarations: getToolsDef() }],
       generationConfig: { temperature: 0.1 }
@@ -747,7 +776,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
 
   const callOpenAIStream = async (currentMessages: Message[]) => {
     const openaiMessages = [
-      { role: "system", content: systemPrompt + "\nALWAYS be verbose and detailed about your DSP logic and actions. Explain WHY you are making changes." }
+      { role: "system", content: getFullSystemPrompt() }
     ];
 
     for (const msg of currentMessages) {
@@ -861,7 +890,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
       },
       body: JSON.stringify({
         model: modelName,
-        system: systemPrompt + "\nALWAYS be verbose and detailed about your DSP logic and actions. Explain WHY you are making changes.",
+        system: getFullSystemPrompt(),
         messages: anthropicMessages,
         max_tokens: 4000,
         stream: true,
@@ -1447,42 +1476,25 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
               addDisplayMsg('system', `[RESEARCH] Consulting Vult technical reference`);
               result = {
                 vult_syntax_guide: {
-                  overview: "Vult is a transcompiler language for high-performance DSP. Functions are processing units that can maintain state. Calling a stateful function creates a unique instance of its state.",
-                  types: "real (float/fixed), int, bool, fix16, array(type, size)",
+                  overview: "Vult is a transcompiler language for high-performance DSP. (V0: Stable classic, V1: Modern strictly typed).",
                   declarations: {
-                    mem: "Persistent state across calls. Define ONLY inside functions, NOT globally: 'mem x = 0.0;' or 'mem x: real;'",
-                    val: "Local immutable constant: 'val x = 1.0;'",
-                    var: "Local mutable variable: 'var x = 0.0;'",
-                    fun: "Function: 'fun name(a: real) : real { return a; }'",
-                    and: "Parallel defs: 'and noteOn(...) { ... }'",
-                    external: "External: 'external abs(x: real) : real @[built-in]'"
+                    mem: "Persistent state inside functions: 'mem x = 0.0;'. Global mem is INVALID.",
+                    val: "Immutable local: 'val x = 1.0;'",
+                    var: "Mutable local: 'var x = 0.0;'",
+                    fun: "Function: 'fun f(x) { return x; }'",
+                    and: "MANDATORY for state-sharing handlers: 'fun process(x) { ... } and noteOn(n,v,c) { ... }'"
                   },
-                  control_flow: {
-                    if_statement: "if (cond) { a = b; } else { c = d; } (Parens required, braces preferred)",
-                    if_expression: "val x = if cond then A else B; (MUST use 'then', no braces allowed)",
-                    tuple_assignment: "Multiple return/swap: 'w2, w1 = w1, w0;'",
+                  v1_exclusive_features: {
+                    pattern_matching: "match(x) { 0 -> A; 1 -> B; _ -> C; }",
+                    generic_arrays: "mem buffer: array(real, 1024);",
+                    iterators: "iter(i, 8) { set(buf, i, 0.0); }",
+                    instances: "instances[i]:osc(f);"
                   },
-                  statement_rules: "CRITICAL: All statements MUST be assignments ('a = b;') or explicit discards of function calls ('_ = func();'). You CANNOT write standalone function calls like 'func();'. You CANNOT write standalone expressions (e.g., '1.0;'). They will cause an 'Invalid statement' compile error.",
-                  operators: {
-                    arithmetic: "+, -, *, /, %",
-                    comparison: "==, !=, <, >, <=, >= (C-style)",
-                    logical: "&&, ||, ! (C-style mandatory)"
-                  },
-                  arrays: {
-                    init: "mem buffer: array(real, 1024);",
-                    get: "val x = get(buffer, index);",
-                    set: "set(buffer, index, value);",
-                    wrap: "wrap_array(a)"
-                  },
-                  math_builtins: "abs, exp, log, log10, sin, cos, tan, tanh, sqrt, pow, floor, ceil, clip(x, min, max)",
-                  casting: "real(int_val), int(real_val)",
-                  meta: {
-                    tables: "fun f(x) : real @[table(size=128, min=0.0, max=1.0)] { ... }",
-                    waves: "@[wave] for embedding wav files",
-                    not_defined: "Do not use 'and', 'or', 'not' as keywords for logic."
-                  }
+                  statement_rules: "STRICT: All statements MUST be assignments ('a=b;') or discards ('_=f();'). Standalone calls or expressions will FAIL.",
+                  logic_operators: "C-style mandatory: &&, ||, ! (Do NOT use 'and', 'or', 'not' as keywords).",
+                  math: "abs, exp, log, log10, sin, cos, tan, tanh, sqrt, pow, floor, ceil, clip(x, low, high)"
                 },
-                next_step: "Reference consulted. ENSURE your code follows this syntax and PROCEED IMMEDIATELY to implementation. DO NOT stop the loop."
+                next_step: "Reference consulted. Ensure your patches follow version-specific syntax and PROCEED IMMEDIATELY."
               };
             } else if (name === 'write_plan') {
               planRef.current = fc.args.plan;
@@ -1511,6 +1523,17 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
               setIsLoading(true); 
               setStatus(`Thinking (Turn ${turnCount})...`);
               result = { response: userResponse };
+            } else if (name === 'store_memory') {
+              const fact = fc.args.fact;
+              setAgentMemory(prev => {
+                const updated = prev ? prev + "\n- " + fact : "- " + fact;
+                return updated;
+              });
+              addDisplayMsg('system', `[MEMORY] Learning: "${fact}"`);
+              result = { success: true, status: "Fact recorded in long-term memory." };
+            } else if (name === 'get_memory') {
+              addDisplayMsg('system', `[MEMORY] Recalling long-term memories...`);
+              result = { memory: agentMemory || "No persistent memories stored yet." };
             }
 
             functionResponses.push({ 
