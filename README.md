@@ -17,7 +17,8 @@ Building custom synthesizers, audio effects, and plugins often involves a high b
 
 *   **Rapid Prototyping:** Implement complex DSP ideas in no time. The isolated execution environment allows you to iterate on oscillators, filters, and state machines without crashing your host.
 *   **Hardware-Ready Results:** Everything you build is ready for embedded deployment. One click exports highly optimized C++ code for Teensy, Daisy, and other modular hardware platforms.
-*   **AI-Accelerated Development:** The integrated agent handles the technical "heavy lifting"—from surgical bug fixes to real-time signal analysis—acting as a senior mentor that helps you build technically correct audio modules faster than ever before.
+*   **AI-Accelerated Development:** The integrated agent handles the technical "heavy lifting"—from surgical bug fixes to real-time signal analysis. It supports massive context windows via **Google Gemini**, **Anthropic Claude 3.7**, **OpenAI**, **DeepSeek**, **Groq**, and local **Ollama** endpoints.
+*   **Professional UX / UI:** A carefully crafted dark mode interface synced with the `vs-dark` compiler aesthetics provides an instantly familiar, distraction-free laboratory.
 
 VultLab integrates a low-latency AudioWorklet execution engine with server-side compilation and high-frequency telemetry. It provides a specialized workspace for designing, testing, and verifying audio algorithms intended for embedded hardware and desktop applications.
 
@@ -58,14 +59,15 @@ The agent is equipped with a professional diagnostic and engineering suite:
 ## Diagnostic Laboratory
 
 *   **Dual-Trace Oscilloscope:** High-DPI visualization featuring a main output trace and a secondary probe trace with adjustable gain, zoom, and stable rising-edge triggering.
-*   **Logarithmic Spectrum Analyzer:** A high-resolution frequency analyzer mapped to a logarithmic scale for precise monitoring of the bass and mid-range response.
+*   **Logarithmic Spectrum Analyzer:** A high-resolution frequency analyzer mapped to a logarithmic scale for precise monitoring of the bass and mid-range response, complete with an interactive probe crosshair.
 *   **Multi-Trace Logic Analyzer:** Roll-mode plotter for internal variables. Boolean states are rendered with sharp logic transitions for timing verification.
 *   **Live Telemetry Inspector:** Real-time view of every internal memory variable with the ability to inject values directly into the running DSP engine.
-*   **Technical Metrics:** Integrated monitoring of signal headroom, clipping counts, and RMS levels.
+*   **Technical Metrics:** Integrated vertical monitoring of signal headroom, clipping counts, THD+N, and RMS levels across true stereo L/R channels.
 
 ## Laboratory Gear & Performance
 
-*   **Adaptive Virtual Keyboard:** A responsive MIDI keyboard that scales based on viewport width. Features slide-play support and tactile feedback.
+*   **Adaptive Virtual Keyboard:** A responsive MIDI keyboard that scales based on viewport width. Features slide-play support and tactile PC-keyboard bindings.
+*   **Polyphonic Sequencer:** A multi-track TR-style drum and piano-roll melody sequencer allowing you to quickly loop test vectors into your DSP algorithms without leaving the browser.
 *   **High-Resolution Controllers:** Industrial-style SVG knobs with 400-pixel sweep sensitivity and shift-click fine-tuning for precise parameter control.
 *   **DSP Lab Routing:** Automatic mapping of Vult function parameters to laboratory input strips.
 *   **Signal Sources:** Includes sine, saw, square, and triangle oscillators, as well as impulse, step, and frequency sweep generators.
