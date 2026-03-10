@@ -133,29 +133,45 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
   const askUserResolverRef = useRef<((val: string) => void) | null>(null);
   const stopFlagRef = useRef(false);
 
+  const handleSendMessage = (text: string) => {
+    if (isLoading) return;
+    setInput('');
+    setIsLoading(true);
+    addDisplayMsg('user', text);
+    if (provider === 'gemini' && !apiKey) {
+      addDisplayMsg('assistant', "API key missing. Open Settings to add your key.");
+      setIsLoading(false);
+      return;
+    }
+    const newMsg: Message = { role: 'user', parts: [{ text }] };
+    setMessages(prev => {
+      const updated = [...prev, newMsg];
+      setTimeout(() => processAgentLoop(updated), 0);
+      return updated;
+    });
+  };
+
   // Expose sendMessage so parent can trigger agent programmatically
   // (e.g. from Monaco editor right-click actions)
   useImperativeHandle(llmRef, () => ({
     sendMessage(text: string) {
-      if (isLoading) return;
-      setInput('');
-      setIsLoading(true);
-      addDisplayMsg('user', text);
-      if (provider === 'gemini' && !apiKey) {
-        addDisplayMsg('assistant', "API key missing. Open Settings to add your key.");
-        setIsLoading(false);
-        return;
-      }
-      const newMsg: Message = { role: 'user', parts: [{ text }] };
-      // messages state may be stale here — use functional ref pattern
-      setMessages(prev => {
-        const updated = [...prev, newMsg];
-        // kick off agent loop after state settles
-        setTimeout(() => processAgentLoop(updated), 0);
-        return updated;
-      });
+      handleSendMessage(text);
     },
   }));
+
+  useEffect(() => {
+    const handleAskAgent = (e: any) => {
+      if (e.detail?.prompt) {
+        if (e.detail.autoSend) {
+          handleSendMessage(e.detail.prompt);
+        } else {
+          setInput(e.detail.prompt);
+        }
+      }
+    };
+    window.addEventListener('dsplab:ask-agent', handleAskAgent);
+    return () => window.removeEventListener('dsplab:ask-agent', handleAskAgent);
+  }, [isLoading]); // Need isLoading dependency for handleSendMessage
 
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 

@@ -274,6 +274,54 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
       }
     });
 
+    monaco.languages.registerDocumentFormattingEditProvider('vult', {
+      provideDocumentFormattingEdits: (model: import('monaco-editor').editor.ITextModel, options: import('monaco-editor').languages.FormattingOptions) => {
+        const lines = model.getValue().split('\n');
+        let formatted = '';
+        let indentLevel = 0;
+        const indentString = options.insertSpaces ? ' '.repeat(options.tabSize) : '\t';
+
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i].trim();
+          if (line.length === 0) {
+            formatted += '\n';
+            continue;
+          }
+
+          // Strip comments from the line for brace counting
+          const codePart = line.split('//')[0];
+          
+          let closingAtStart = 0;
+          let tempCode = codePart.trim();
+          while (tempCode.startsWith('}')) {
+             closingAtStart++;
+             tempCode = tempCode.substring(1).trim();
+          }
+
+          let currentIndent = Math.max(0, indentLevel - closingAtStart);
+          
+          // Heuristics regarding else placement
+          if (line.startsWith('else')) {
+            // Usually 'else' goes at the same level as the closing brace before it.
+            // If the closing brace was on the same line, currentIndent is fine.
+          }
+          
+          formatted += indentString.repeat(currentIndent) + line + (i < lines.length - 1 ? '\n' : '');
+
+          const openBraces = (codePart.match(/\{/g) || []).length;
+          const closeBraces = (codePart.match(/\}/g) || []).length;
+          
+          indentLevel += (openBraces - closeBraces);
+          indentLevel = Math.max(0, indentLevel);
+        }
+
+        return [{
+          range: model.getFullModelRange(),
+          text: formatted
+        }];
+      }
+    });
+
   };
 
   // Helper: get selected text, or the whole current function, or whole file
