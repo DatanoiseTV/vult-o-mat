@@ -76,12 +76,7 @@ const ScopeView: React.FC<ScopeViewProps> = ({ getScopeData, getProbedData, prob
       const displayDataL = scopeData.l.subarray(startIdx, startIdx + samplesToShow);
       const displayDataR = scopeData.r.subarray(startIdx, startIdx + samplesToShow);
 
-      let isStereo = false;
-      if (scopeMode !== 'X/Y') {
-        for (let i = 0; i < displayDataL.length; i++) {
-          if (Math.abs(displayDataL[i] - displayDataR[i]) > 0.001) { isStereo = true; break; }
-        }
-      }
+      let isStereo = scopeMode !== 'X/Y' && !!scopeData.r;
       // Grid
       ctx.strokeStyle = 'rgba(0, 255, 0, 0.15)';
       ctx.lineWidth = 1;

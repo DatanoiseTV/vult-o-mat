@@ -498,15 +498,20 @@ class VultProcessor extends AudioWorkletProcessor {
           if (isNaN(outL) || !isFinite(outL)) outL = 0;
           if (isNaN(outR) || !isFinite(outR)) outR = 0;
 
-          outputL[i] = outL;
-          if (outputR) outputR[i] = outR;
-
           const absL = Math.abs(outL);
           const absR = Math.abs(outR);
-          const peak = Math.max(absL, absR);
-          if (peak > blockPeak) blockPeak = peak;
-          if (absL >= 0.999 || absR >= 0.999) blockClips++;
+          if (absL > blockPeak) blockPeak = absL;
+          if (absR > blockPeak) blockPeak = absR;
+          if (absL > 0.999 || absR > 0.999) blockClips++;
+
           sumSq += (outL * outL + outR * outR) / 2;
+
+          // Digital clipping at 0dBFS (1.0)
+          const clippedL = outL > 1.0 ? 1.0 : (outL < -1.0 ? -1.0 : outL);
+          const clippedR = outR > 1.0 ? 1.0 : (outR < -1.0 ? -1.0 : outR);
+
+          outputL[i] = clippedL;
+          if (outputR) outputR[i] = clippedR;
 
           this.errorCount = 0; 
 
