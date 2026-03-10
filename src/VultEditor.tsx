@@ -113,6 +113,35 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
     if (monaco.languages.getLanguages().some((l: any) => l.id === 'vult')) return;
 
     monaco.languages.register({ id: 'vult' });
+    monaco.languages.setLanguageConfiguration('vult', {
+      comments: {
+        lineComment: '//',
+        blockComment: ['/*', '*/'],
+      },
+      brackets: [
+        ['{', '}'],
+        ['[', ']'],
+        ['(', ')'],
+      ],
+      autoClosingPairs: [
+        { open: '{', close: '}' },
+        { open: '[', close: ']' },
+        { open: '(', close: ')' },
+        { open: '"', close: '"' },
+        { open: "'", close: "'" },
+      ],
+      surroundingPairs: [
+        { open: '{', close: '}' },
+        { open: '[', close: ']' },
+        { open: '(', close: ')' },
+        { open: '"', close: '"' },
+        { open: "'", close: "'" },
+      ],
+      indentationRules: {
+        increaseIndentPattern: /\{[^}]*$/,
+        decreaseIndentPattern: /^\s*\}/,
+      },
+    });
     monaco.languages.setMonarchTokensProvider('vult', {
       tokenizer: {
         root: [
