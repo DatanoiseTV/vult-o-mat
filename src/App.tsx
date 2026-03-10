@@ -689,36 +689,13 @@ const App: React.FC = () => {
       }
       const result = await ae.updateCode(code);
       if (result.success) { setStatus('Running'); ae.setProbes(activeProbes); setEditorMarkers([]); }
-      else { setStatus('Compile Error'); setEditorMarkers(parseVultError(result)); }
+      else { setStatus('Compile Error'); setEditorMarkers([]); }
       setIsPlaying(true);
       setSeqPlaying(true);
     }
   };
 
-  const parseVultError = (result: any) => {
-    let markers: any[] = [];
-    if (result.rawErrors && Array.isArray(result.rawErrors)) {
-      result.rawErrors.forEach((err: any) => {
-        if (err.row !== undefined && err.row !== null) {
-          const r = parseInt(err.row) + 1;
-          const c = parseInt(err.column) + 1;
-          markers.push({ startLineNumber: r, endLineNumber: r, startColumn: c, endColumn: c + 3, message: err.msg || err.text, severity: 8 });
-        }
-      });
-    }
-    
-    if (markers.length === 0 && result.error) {
-       const errorStr = typeof result.error === 'string' ? result.error : '';
-       const lineMatch = errorStr.match(/line (\d+)/i);
-       const colMatch = errorStr.match(/column (\d+)/i) || errorStr.match(/characters (\d+)/i);
-       if (lineMatch) {
-         const line = parseInt(lineMatch[1]);
-         const col = colMatch ? parseInt(colMatch[1]) : 1;
-         markers.push({ startLineNumber: line, endLineNumber: line, startColumn: col, endColumn: col + 1, message: errorStr.replace(/Errors in the program:\s*/, '').trim(), severity: 8 });
-       }
-    }
-    return markers;
-  };
+  // Removed `parseVultError` since compiler errors are just single global errors generally.
 
   const handleCodeChange = async (value: string | undefined) => {
     if (value === undefined) return;
@@ -740,11 +717,11 @@ const App: React.FC = () => {
       const playing = audioEngineRef.current.getIsPlaying();
       if (playing) {
         const result = await audioEngineRef.current.updateCode(value);
-        if (!result.success) { setStatus('Compile Error'); setEditorMarkers(parseVultError(result)); }
+        if (!result.success) { setStatus('Compile Error'); setEditorMarkers([]); }
         else { setStatus('Running'); setEditorMarkers([]); }
       } else {
         const result = await audioEngineRef.current.compileCheck(value);
-        if (!result.success) { setStatus('Syntax Error'); setEditorMarkers(parseVultError(result)); }
+        if (!result.success) { setStatus('Syntax Error'); setEditorMarkers([]); }
         else { setStatus('Idle'); setEditorMarkers([]); }
       }
     }, 400);
@@ -859,7 +836,7 @@ const App: React.FC = () => {
         if (result.success) setStatus('Running');
         else {
           setStatus('Compile Error');
-          setEditorMarkers(parseVultError(result));
+          setEditorMarkers([]);
         }
       });
     } else {
@@ -880,7 +857,7 @@ const App: React.FC = () => {
     setCode(newCode);
     const result = await audioEngineRef.current.updateCode(newCode);
     if (result.success) { saveSnapshot("Agent Update"); setDiffMode(true); setEditorMarkers([]); setStatus('Trial Compile OK'); return { success: true, message: "Code compiled successfully. Waiting for user to ACCEPT changes." }; }
-    else { setDiffMode(false); setEditorMarkers(parseVultError(result)); setStatus('Compile Error'); return { success: false, error: result.error }; }
+    else { setDiffMode(false); setEditorMarkers([]); setStatus('Compile Error'); return { success: false, error: result.error }; }
   };
 
   const handleAcceptDiff = async () => {
@@ -890,7 +867,7 @@ const App: React.FC = () => {
     if (isPlaying) {
       const result = await audioEngineRef.current.updateCode(newCode);
       if (result.success) { setStatus('Running'); setEditorMarkers([]); }
-      else { setStatus('Compile Error'); setEditorMarkers(parseVultError(result)); }
+      else { setStatus('Compile Error'); setEditorMarkers([]); }
     }
     setDiffMode(false);
     setOriginalCode('');

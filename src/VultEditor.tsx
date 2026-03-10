@@ -147,7 +147,7 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
       },
     });
 
-    const vultKeywords = ['fun', 'mem', 'val', 'if', 'else', 'return', 'true', 'false', 'real', 'int', 'bool'];
+    const vultKeywords = ['fun', 'mem', 'val', 'if', 'else', 'then', 'return', 'true', 'false', 'real', 'int', 'bool', 'type', 'external', 'init', 'array'];
     const vultStdlib: Record<string, { desc: string, snippet: string }> = {
       'sin': { desc: 'Sine function', snippet: 'sin(${1:x})' },
       'cos': { desc: 'Cosine function', snippet: 'cos(${1:x})' },
@@ -168,7 +168,7 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
 
     monaco.languages.setMonarchTokensProvider('vult', {
       keywords: [
-        'fun', 'mem', 'val', 'if', 'else', 'then', 'return', 'true', 'false', 'and', 'not', 'or', 'external', 'type'
+        'fun', 'mem', 'val', 'if', 'else', 'then', 'return', 'true', 'false', 'and', 'not', 'or', 'external', 'type', 'init', 'array'
       ],
       typeKeywords: [
         'real', 'int', 'bool'
@@ -183,6 +183,7 @@ const VultEditor = forwardRef<VultEditorHandle, VultEditorProps>(({
         root: [
           [/(fun)(\s+)([a-zA-Z_]\w*)/, ['keyword', 'white', 'keyword.function']],
           [/([a-zA-Z_]\w*)(\s*)(?=\()/, 'keyword.function'],
+          [/@[a-zA-Z_]\w*/, 'annotation'],
           [/[a-zA-Z_]\w*/, { cases: { 
             '@typeKeywords': 'type',
             '@keywords': 'keyword',
