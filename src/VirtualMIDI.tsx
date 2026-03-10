@@ -158,11 +158,36 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
           </div>
         </div>
         <div className="spacer" style={{ flex: 1 }} />
-        <button className={`kb-toggle ${kbEnabled ? 'active' : ''}`} onClick={() => setKbEnabled(!kbEnabled)}>
-          {kbEnabled ? <Keyboard size={12} /> : <MousePointer2 size={12} />}
-          {kbEnabled ? 'KB ON' : 'MOUSE'}
+        <button 
+          className={`kb-toggle ${kbEnabled ? 'active' : ''}`} 
+          onClick={() => setKbEnabled(!kbEnabled)}
+          style={{ 
+            padding: '6px 14px', 
+            borderRadius: '4px', 
+            background: kbEnabled ? 'var(--accent-primary)' : '#2a2a2a',
+            color: kbEnabled ? '#fff' : '#aaa',
+            border: kbEnabled ? '1px solid var(--accent-primary)' : '1px solid #444',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontWeight: kbEnabled ? 'bold' : 'normal',
+            cursor: 'pointer',
+            boxShadow: kbEnabled ? '0 0 12px rgba(var(--accent-primary-rgb), 0.4)' : 'none',
+            transition: 'all 0.2s'
+          }}
+        >
+          {kbEnabled ? <Keyboard size={14} /> : <MousePointer2 size={14} />}
+          {kbEnabled ? 'PC KEYBOARD ON' : 'ENABLE PC KEYBOARD'}
         </button>
       </div>
+
+      {kbEnabled && (
+        <div style={{ textAlign: 'center', padding: '10px 15px 0', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'center', gap: '20px' }}>
+          <span>🎹 <strong>Play Notes:</strong> A, W, S, E, D, F, T, G, Y...</span>
+          <span>↕️ <strong>Octave:</strong> Z / X</span>
+          <span>🔊 <strong>Velocity:</strong> C / V</span>
+        </div>
+      )}
 
       <div className="knobs-row" style={{ flexWrap: 'wrap', justifyContent: 'center', gap: '24px', padding: '15px' }}>
         {Object.keys(ccLabels).sort((a, b) => parseInt(a) - parseInt(b)).map(ccStr => {
