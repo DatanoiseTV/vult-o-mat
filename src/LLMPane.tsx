@@ -58,7 +58,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
     choices?: {label: string, value: string}[]
   }[]>([]);
 
-  const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini');
+  const [provider, setProvider] = useState<'gemini' | 'openai' | 'anthropic'>('gemini');
   const [endpoint, setEndpoint] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('gemini-flash-lite-latest');
@@ -160,7 +160,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
   useEffect(() => { codeRef.current = currentCode; }, [currentCode]);
 
   useEffect(() => {
-    const savedProvider = localStorage.getItem('llm_provider') as 'gemini' | 'openai';
+    const savedProvider = localStorage.getItem('llm_provider') as 'gemini' | 'openai' | 'anthropic';
     if (savedProvider) setProvider(savedProvider);
     const savedEndpoint = localStorage.getItem('llm_endpoint');
     if (savedEndpoint) setEndpoint(savedEndpoint);
@@ -219,7 +219,7 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
     scrollToBottom();
   }, [displayMessages, isLoading, status]);
 
-  const handleSaveSettings = (newProvider: 'gemini' | 'openai', newEndpoint: string, key: string, model: string) => {
+  const handleSaveSettings = (newProvider: 'gemini' | 'openai' | 'anthropic', newEndpoint: string, key: string, model: string) => {
     setProvider(newProvider);
     setEndpoint(newEndpoint);
     setApiKey(key);
@@ -797,6 +797,74 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
     }    return response.body;
   };
 
+  const callAnthropicStream = async (currentMessages: Message[]) => {
+    const anthropicMessages = [];
+    for (const msg of currentMessages) {
+      if (msg.role === 'user') {
+        let textContent = "";
+        for (const p of msg.parts) {
+          if (p.text) textContent += p.text + "\n";
+          if (p.functionResponse) {
+            textContent += `Function ${p.functionResponse.name} response: ${JSON.stringify(p.functionResponse.response)}\n`;
+          }
+        }
+        anthropicMessages.push({ role: "user", content: textContent });
+      } else if (msg.role === 'model') {
+        let textContent = "";
+        for (const p of msg.parts) {
+          if (p.text) textContent += p.text + "\n";
+          if (p.functionCall) {
+            textContent += `Called function ${p.functionCall.name} with ${JSON.stringify(p.functionCall.args)}\n`;
+          }
+        }
+        anthropicMessages.push({ role: "assistant", content: textContent });
+      }
+    }
+
+    const anthropicTools = getToolsDef().map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: {
+        type: "object",
+        properties: t.parameters.properties,
+        required: t.parameters.required
+      }
+    }));
+
+    abortControllerRef.current = new AbortController();
+    const url = endpoint || 'https://api.anthropic.com/v1/messages';
+    
+    // Anthropic-specific API settings
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true' // Required to bypass CORS from frontend
+      },
+      body: JSON.stringify({
+        model: modelName,
+        system: systemPrompt + "\nALWAYS be verbose and detailed about your DSP logic and actions. Explain WHY you are making changes.",
+        messages: anthropicMessages,
+        max_tokens: 4000,
+        stream: true,
+        tools: anthropicTools,
+        temperature: 0.1
+      }),
+      signal: abortControllerRef.current.signal
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: { message: response.statusText } }));
+      let msg = err.error?.message || response.statusText;
+      if (response.status === 429) msg = "429: Quota exceeded or rate limited.";
+      if (response.status === 401) msg = "401: Invalid API key.";
+      throw new Error(msg);
+    }
+    return response.body;
+  };
+
   const handleStop = () => {
     stopFlagRef.current = true;
     if (abortControllerRef.current) {
@@ -897,6 +965,51 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
                   }
                 }
               }
+            }
+          } else if (provider === 'anthropic') {
+            const stream = await callAnthropicStream(currentConversation);
+            if (!stream) break;
+            const reader = stream.getReader();
+            const decoder = new TextDecoder();
+            let currentToolCall: any = null;
+
+            while (!stopFlagRef.current) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n');
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.substring(6));
+                    if (data.type === 'message_start' && data.message?.usage) {
+                      updateTokens({ prompt_tokens: data.message.usage.input_tokens });
+                    }
+                    if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
+                      setStatus("Typing...");
+                      if (!currentTextId) currentTextId = addDisplayMsg('assistant', "", undefined, true);
+                      addDisplayMsg('assistant', data.delta.text, currentTextId, true);
+                      let textPart = modelParts.find(p => p.text !== undefined);
+                      if (!textPart) { textPart = { text: "" }; modelParts.push(textPart); }
+                      textPart.text += data.delta.text;
+                    }
+                    if (data.type === 'content_block_start' && data.content_block?.type === 'tool_use') {
+                      currentToolCall = { name: data.content_block.name, argsString: "" };
+                    }
+                    if (data.type === 'content_block_delta' && data.delta?.type === 'input_json_delta') {
+                      if (currentToolCall) currentToolCall.argsString += data.delta.partial_json;
+                    }
+                    if (data.type === 'message_delta' && data.usage) {
+                      updateTokens({ completion_tokens: data.usage.output_tokens });
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+            if (currentToolCall) {
+              try { modelParts.push({ functionCall: { name: currentToolCall.name, args: JSON.parse(currentToolCall.argsString) } }); }
+              catch(e) { console.error("Failed to parse tool args", currentToolCall.argsString); }
             }
           } else {
             const stream = await callOpenAIStream(currentConversation);
@@ -1487,6 +1600,24 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
         });
         const data = await response.json();
         idea = data.candidates?.[0]?.content?.parts?.[0]?.text || "A unique resonant filter.";
+      } else if (provider === 'anthropic') {
+        const response = await fetch(endpoint || 'https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: modelName || 'claude-3-7-sonnet-20250219',
+            messages: [{ role: 'user', content: inspirationPrompt }],
+            max_tokens: 1000,
+            temperature: 0.9
+          })
+        });
+        const data = await response.json();
+        idea = data.content?.[0]?.text || "A unique modulation effect.";
       } else {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -1616,11 +1747,24 @@ const LLMPane = forwardRef<LLMPaneHandle, LLMPaneProps>(({
               GEMINI
             </label>
             <label style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input type="radio" checked={provider === 'anthropic'} onChange={() => handleSaveSettings('anthropic', endpoint, apiKey, modelName)} />
+              CLAUDE
+            </label>
+            <label style={{ fontSize: '9px', color: '#888', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input type="radio" checked={provider === 'openai'} onChange={() => handleSaveSettings('openai', endpoint, apiKey, modelName)} />
-              LOCAL/OAI
+              OAI-COMPAT
             </label>
           </div>
-          {provider === 'openai' && (
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', margin: '4px 0' }}>
+            <button onClick={() => handleSaveSettings('gemini', '', apiKey, 'gemini-2.5-flash')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>Gemini</button>
+            <button onClick={() => handleSaveSettings('anthropic', 'https://api.anthropic.com/v1/messages', apiKey, 'claude-3-7-sonnet-20250219')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>Claude 3.7</button>
+            <button onClick={() => handleSaveSettings('openai', 'https://api.openai.com/v1/chat/completions', apiKey, 'gpt-4o')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>OpenAI (gpt-4o)</button>
+            <button onClick={() => handleSaveSettings('openai', 'https://api.groq.com/openai/v1/chat/completions', apiKey, 'llama3-70b-8192')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>Groq</button>
+            <button onClick={() => handleSaveSettings('openai', 'https://api.deepseek.com/chat/completions', apiKey, 'deepseek-chat')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>DeepSeek</button>
+            <button onClick={() => handleSaveSettings('openai', 'http://localhost:11434/v1/chat/completions', apiKey, 'llama3')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>Local (Ollama)</button>
+            <button onClick={() => handleSaveSettings('openai', 'https://openrouter.ai/api/v1/chat/completions', apiKey, 'anthropic/claude-3.5-sonnet')} style={{ fontSize: '9px', padding: '2px 6px', background: '#222', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>OpenRouter</button>
+          </div>
+          {(provider === 'openai' || provider === 'anthropic') && (
             <input type="text" placeholder="Endpoint URL..." value={endpoint} onChange={(e) => handleSaveSettings(provider, e.target.value, apiKey, modelName)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
           )}
           <input type="password" placeholder="API Key..." value={apiKey} onChange={(e) => handleSaveSettings(provider, endpoint, e.target.value, modelName)} style={{ background: '#111', border: '1px solid #444', color: '#fff', padding: '6px', borderRadius: '4px', fontSize: '11px', outline: 'none' }} />
