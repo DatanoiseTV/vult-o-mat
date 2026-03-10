@@ -342,11 +342,9 @@ fun process(input: real) {
     val mix = (o1 + o2 + o3 + o4 + o5 + o6) * 0.25;
     val chorused = roland_chorus(mix, chorus_depth);
     val reverbed = shimmer_reverb(chorused, rev_mix, rev_decay, rev_shimmer, rev_lush, rev_damp);
-    
     // Final Bass Boost (Low Shelf at 150Hz)
     val final_out = low_shelf(reverbed, 30.0, 0.5);
-    
-    return final_out * vol;
+    return final_out * vol, final_out * vol;
 }
 
 and noteOn(n: int, v: int, ch: int) {
@@ -570,13 +568,12 @@ const App: React.FC = () => {
         const historyRaw = localStorage.getItem('vult_code_history');
         if (historyRaw) setCodeHistory(JSON.parse(historyRaw));
         
-        let startCode = code;
-        if (lastSession && lastSession.trim().length > 50) { 
+        let startCode = PRESETS["vs80"];
+        if (lastSession && lastSession.trim().length > 100) { 
           startCode = lastSession; 
           setCode(lastSession); 
         } else {
           setCode(PRESETS["vs80"]);
-          startCode = PRESETS["vs80"];
         }
         
         setInputs(parseVultInputs(startCode));
