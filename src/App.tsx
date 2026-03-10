@@ -463,7 +463,14 @@ AUTONOMOUS EXECUTION:
 
 const App: React.FC = () => {
   const [code, setCode] = useState(PRESETS["vs80"]);
-  const [projectName, setProjectName] = useState("My Vult Project");
+  const [projectName, setProjectName] = useState(() => {
+    return localStorage.getItem('vult_session_name') || "My Vult Project";
+  });
+  
+  const updateProjectName = (name: string) => {
+    setProjectName(name);
+    localStorage.setItem('vult_session_name', name);
+  };
   const [savedProjects, setSavedProjects] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [vultVersion, setVultVersion] = useState<'v0' | 'v1'>('v0');
@@ -592,7 +599,7 @@ const App: React.FC = () => {
             setCode(lastSession);
             setInputs(parseVultInputs(lastSession));
             setCcLabels(parseVultCCs(lastSession));
-            if (lastProjectName) setProjectName(lastProjectName);
+            if (lastProjectName) updateProjectName(lastProjectName);
           } else if (preference === 'ask') {
             setPendingRestore({ code: lastSession, name: lastProjectName || 'My Vult Project' });
             setShowRestoreModal(true);
@@ -926,6 +933,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleNewProject = useCallback(() => {
+    const freshCode = PRESETS["Minimal"];
+    handleLoadCode(freshCode);
+    updateProjectName("New Vult Project");
+  }, [handleLoadCode, updateProjectName]);
+
   const handleAgentUpdateCode = async (newCode: string) => {
     if (!diffMode) setOriginalCode(code);
     setCode(newCode);
@@ -1164,13 +1177,24 @@ const App: React.FC = () => {
           <div className="control-group"><span className="label">MIDI</span><select value={selectedMidiInput} onChange={(e) => { setSelectedMidiInput(e.target.value); midiControllerRef.current?.setInput(e.target.value === 'all' ? null : e.target.value); }}><option value="all">All</option>{midiInputs.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select></div>
           <div className="control-group">
             <span className="label">SAVED</span>
-            <select value="" onChange={(e) => {
-              const projects = JSON.parse(localStorage.getItem('vult_projects') || '{}');
-              const savedCode = projects[e.target.value];
-              if (savedCode) handleLoadCode(savedCode);
+            <select value="" style={{ width: '120px' }} onChange={(e) => {
+              const val = e.target.value;
+              if (val === "NEW") {
+                handleNewProject();
+              } else if (val) {
+                const projects = JSON.parse(localStorage.getItem('vult_projects') || '{}');
+                const savedCode = projects[val];
+                if (savedCode) {
+                  handleLoadCode(savedCode);
+                  updateProjectName(val);
+                }
+              }
             }}>
-              <option value="" disabled>Open...</option>
-              {savedProjects.map(p => <option key={p} value={p}>{p}</option>)}
+              <option value="" disabled>Project...</option>
+              <option value="NEW">+ New Project</option>
+              {savedProjects.length > 0 && <optgroup label="Saved">
+                {savedProjects.map(p => <option key={p} value={p}>{p}</option>)}
+              </optgroup>}
             </select>
           </div>
           <div className="spacer" />
@@ -1437,9 +1461,7 @@ const App: React.FC = () => {
               <button 
                 className="btn-restore-secondary"
                 onClick={() => {
-                  const freshCode = PRESETS["Minimal"];
-                  handleLoadCode(freshCode);
-                  setProjectName("New Vult Project");
+                  handleNewProject();
                   setShowRestoreModal(false);
                 }}
               >
