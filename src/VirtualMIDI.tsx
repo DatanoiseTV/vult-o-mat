@@ -10,6 +10,18 @@ interface VirtualMIDIProps {
   initialState?: Record<string, any>;
 }
 
+const abletonMapping: Record<string, number> = {
+  'a': 0, 'w': 1, 's': 2, 'e': 3, 'd': 4, 'f': 5, 't': 6, 'g': 7,
+  'y': 8, 'h': 9, 'u': 10, 'j': 11, 'k': 12, 'o': 13, 'l': 14,
+  'p': 15, ';': 16, "'": 17
+};
+
+// Map offset to key string for display
+const offsetToKey = Object.entries(abletonMapping).reduce((acc, [key, offset]) => {
+  acc[offset] = key.toUpperCase();
+  return acc;
+}, {} as Record<number, string>);
+
 const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, ccLabels, initialState }) => {
   const [kbEnabled, setKbEnabled] = useState(false);
   const [octave, setOctave] = useState(3);
@@ -19,7 +31,6 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
   
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Refs for state accessed in global event listeners
   const octaveRef = useRef(octave);
   const velocityRef = useRef(velocity);
 
@@ -83,11 +94,6 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
       } else if (key === 'v') {
         setVelocity(v => Math.min(127, v + 20));
       } else {
-        const abletonMapping: Record<string, number> = {
-          'a': 0, 'w': 1, 's': 2, 'e': 3, 'd': 4, 'f': 5, 't': 6, 'g': 7,
-          'y': 8, 'h': 9, 'u': 10, 'j': 11, 'k': 12, 'o': 13, 'l': 14,
-          'p': 15, ';': 16, "'": 17
-        };
         const offset = abletonMapping[key];
         if (offset !== undefined && !activeKeyNotes[key]) {
           const startMidi = (octaveRef.current + 1) * 12;
@@ -117,9 +123,12 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
     };
   }, [kbEnabled]);
 
-  const firstNote = (octave + 1) * 12;
-  const lastNote = firstNote + 24; // 2 octaves
+  const startMidi = (octave + 1) * 12;
+  const numOctaves = 2;
+  const firstNote = startMidi;
+  const lastNote = firstNote + (12 * numOctaves);
 
+  // Build the keyboard array
   const whiteKeys = [];
   for (let i = firstNote; i <= lastNote; i++) {
     const isBlack = [1, 3, 6, 8, 10].includes(i % 12);
@@ -130,7 +139,7 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
   }
 
   return (
-    <div className="virtual-midi-panel">
+    <div className="virtual-midi-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="midi-controls-row">
         <div className="midi-group">
           <span className="mini-label">OCTAVE</span>
@@ -148,14 +157,14 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
             <Volume2 size={10} style={{ cursor: 'pointer' }} onClick={() => setVelocity(v => Math.min(127, v + 20))} />
           </div>
         </div>
-        <div className="spacer" />
+        <div className="spacer" style={{ flex: 1 }} />
         <button className={`kb-toggle ${kbEnabled ? 'active' : ''}`} onClick={() => setKbEnabled(!kbEnabled)}>
-          {kbEnabled ? <Keyboard size={10} /> : <MousePointer2 size={10} />}
+          {kbEnabled ? <Keyboard size={12} /> : <MousePointer2 size={12} />}
           {kbEnabled ? 'KB ON' : 'MOUSE'}
         </button>
       </div>
 
-      <div className="knobs-row" style={{ flexWrap: 'wrap', justifyContent: 'center', gap: '20px', padding: '15px' }}>
+      <div className="knobs-row" style={{ flexWrap: 'wrap', justifyContent: 'center', gap: '24px', padding: '15px' }}>
         {Object.keys(ccLabels).sort((a, b) => parseInt(a) - parseInt(b)).map(ccStr => {
           const cc = parseInt(ccStr);
           return (
@@ -173,49 +182,119 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
         })}
       </div>
 
-      <div className="keyboard-container" ref={containerRef} style={{ height: '100px', background: 'var(--bg-surface-elevated)', borderTop: '1px solid var(--border-subtle)', padding: '10px 15px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', height: '100%', minWidth: '400px', maxWidth: '800px', margin: '0 auto', flex: 1 }}>
-          {whiteKeys.map(wk => (
-            <div
-              key={wk.midi}
-              onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); playNote(wk.midi); }}
-              onPointerEnter={(e) => { if (e.buttons > 0) playNote(wk.midi); }}
-              onPointerUp={() => stopNote(wk.midi)}
-              onPointerLeave={() => stopNote(wk.midi)}
-              style={{
-                flex: 1,
-                position: 'relative',
-                border: '1px solid var(--border-subtle)',
-                background: activeNotes.includes(wk.midi) ? 'var(--accent-primary)' : 'linear-gradient(to bottom, #dcdcdc 0%, #ffffff 100%)',
-                borderRadius: '0 0 6px 6px',
-                boxShadow: activeNotes.includes(wk.midi) ? 'inset 0 2px 5px rgba(0,0,0,0.3)' : 'inset 0 -4px 6px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.4)',
-                marginRight: '2px',
-                cursor: 'pointer',
-              }}
-            >
-              {activeNotes.includes(wk.midi) && <div style={{ position: 'absolute', bottom: '6px', left: '50%', transform: 'translateX(-50%)', width: '6px', height: '6px', borderRadius: '50%', background: 'rgba(0,0,0,0.5)', filter: 'blur(1px)' }} />}
-              {wk.blackMidi && (
-                <div
-                  onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.releasePointerCapture(e.pointerId); playNote(wk.blackMidi!); }}
-                  onPointerEnter={(e) => { e.stopPropagation(); if (e.buttons > 0) playNote(wk.blackMidi!); }}
-                  onPointerUp={(e) => { e.stopPropagation(); stopNote(wk.blackMidi!); }}
-                  onPointerLeave={(e) => { e.stopPropagation(); stopNote(wk.blackMidi!); }}
-                  style={{
-                    position: 'absolute',
-                    right: '-25%',
-                    width: '50%',
-                    height: '60%',
-                    background: activeNotes.includes(wk.blackMidi) ? 'var(--accent-danger)' : 'linear-gradient(to bottom, #444 0%, var(--bg-surface) 100%)',
-                    zIndex: 10,
-                    borderRadius: '0 0 4px 4px',
-                    border: '1px solid var(--border-subtle)',
-                    borderTop: 'none',
-                    boxShadow: activeNotes.includes(wk.blackMidi) ? '0 1px 2px rgba(0,0,0,0.8)' : '1px 2px 4px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.1)',
-                  }}
-                />
-              )}
-            </div>
-          ))}
+      <div 
+        className="keyboard-container" 
+        ref={containerRef} 
+        style={{ 
+          height: '140px', 
+          background: 'var(--bg-base)', 
+          borderTop: '2px solid var(--bg-surface-elevated)', 
+          padding: '16px 20px', 
+          overflowX: 'auto', 
+          overflowY: 'hidden', 
+          display: 'flex', 
+          justifyContent: 'center',
+          boxShadow: 'inset 0 10px 20px rgba(0,0,0,0.5)'
+        }}
+      >
+        <div style={{ display: 'flex', height: '100%', minWidth: '400px', maxWidth: '800px', margin: '0 auto', flex: 1, position: 'relative' }}>
+          {whiteKeys.map(wk => {
+            const isWhiteActive = activeNotes.includes(wk.midi);
+            const wOffset = wk.midi - startMidi;
+            const wLabel = kbEnabled && offsetToKey[wOffset] ? offsetToKey[wOffset] : '';
+
+            return (
+              <div
+                key={wk.midi}
+                onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); playNote(wk.midi); }}
+                onPointerEnter={(e) => { if (e.buttons > 0) playNote(wk.midi); }}
+                onPointerUp={() => stopNote(wk.midi)}
+                onPointerLeave={() => stopNote(wk.midi)}
+                style={{
+                  flex: 1,
+                  position: 'relative',
+                  border: '1px solid #111',
+                  background: isWhiteActive 
+                    ? 'var(--accent-primary)' 
+                    : 'linear-gradient(to bottom, #f0f0f0 0%, #d4d4d4 100%)',
+                  borderRadius: '0 0 6px 6px',
+                  boxShadow: isWhiteActive 
+                    ? 'inset 0 2px 8px rgba(0,0,0,0.4), 0 0 10px rgba(var(--accent-primary-rgb), 0.5)' 
+                    : 'inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 6px rgba(0,0,0,0.3)',
+                  marginRight: '2px',
+                  cursor: 'pointer',
+                  transition: 'background 0.05s ease, box-shadow 0.05s ease',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'center',
+                  paddingBottom: '12px',
+                }}
+              >
+                {/* Visual contour for white key */}
+                {!isWhiteActive && (
+                  <div style={{ position: 'absolute', top: 0, left: '2px', right: '2px', bottom: '10px', background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.03))', pointerEvents: 'none' }} />
+                )}
+                
+                {wLabel && (
+                  <span style={{ 
+                    fontSize: '11px', 
+                    fontWeight: 800, 
+                    color: isWhiteActive ? '#fff' : '#666',
+                    textShadow: isWhiteActive ? '0 1px 2px rgba(0,0,0,0.5)' : 'none',
+                    userSelect: 'none'
+                  }}>
+                    {wLabel}
+                  </span>
+                )}
+
+                {wk.blackMidi && (
+                  <div
+                    onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.releasePointerCapture(e.pointerId); playNote(wk.blackMidi!); }}
+                    onPointerEnter={(e) => { e.stopPropagation(); if (e.buttons > 0) playNote(wk.blackMidi!); }}
+                    onPointerUp={(e) => { e.stopPropagation(); stopNote(wk.blackMidi!); }}
+                    onPointerLeave={(e) => { e.stopPropagation(); stopNote(wk.blackMidi!); }}
+                    style={{
+                      position: 'absolute',
+                      right: 'calc(-25% - 1px)',
+                      top: 0,
+                      width: '50%',
+                      height: '65%',
+                      background: activeNotes.includes(wk.blackMidi) 
+                        ? 'var(--accent-secondary)' 
+                        : 'linear-gradient(to bottom, #2a2a2a 0%, #111 100%)',
+                      zIndex: 10,
+                      borderRadius: '0 0 4px 4px',
+                      border: '1px solid #000',
+                      borderTop: 'none',
+                      boxShadow: activeNotes.includes(wk.blackMidi) 
+                        ? 'inset 0 2px 5px rgba(0,0,0,0.5), 0 0 10px rgba(var(--accent-secondary-rgb), 0.6)' 
+                        : 'inset 0 1px 0 rgba(255,255,255,0.1), 0 6px 8px rgba(0,0,0,0.6)',
+                      transition: 'background 0.05s ease, box-shadow 0.05s ease',
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      justifyContent: 'center',
+                      paddingBottom: '8px',
+                    }}
+                  >
+                    {!activeNotes.includes(wk.blackMidi) && (
+                      <div style={{ position: 'absolute', top: 0, left: '15%', right: '15%', height: '80%', background: 'linear-gradient(to bottom, rgba(255,255,255,0.05), transparent)', borderRadius: '2px', pointerEvents: 'none' }} />
+                    )}
+
+                    {kbEnabled && offsetToKey[wk.blackMidi - startMidi] && (
+                      <span style={{ 
+                        fontSize: '9px', 
+                        fontWeight: 700, 
+                        color: activeNotes.includes(wk.blackMidi) ? '#000' : '#888',
+                        userSelect: 'none'
+                      }}>
+                        {offsetToKey[wk.blackMidi - startMidi]}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -223,3 +302,4 @@ const VirtualMIDI: React.FC<VirtualMIDIProps> = ({ onCC, onNoteOn, onNoteOff, cc
 };
 
 export default VirtualMIDI;
+
