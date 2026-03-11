@@ -24,6 +24,7 @@ const TARGET_MAP = {
     'cpp':     { flag: '-ccode',    exts: ['.cpp', '.h', '.tables.h'] },
     'c-pd':    { flag: '-ccode',    exts: ['.cpp', '.h', '.tables.h'], template: 'pd' },
     'c-teensy':{ flag: '-ccode',    exts: ['.cpp', '.h', '.tables.h'], template: 'teensy' },
+    'c-juce':  { flag: '-ccode',    exts: ['.cpp', '.h', '.tables.h'], template: 'none' },
     'js':      { flag: '-jscode',   exts: ['.js'] },
     'lua':     { flag: '-luacode',  exts: ['.lua'] },
     'java':    { flag: null,        exts: ['.java'], needsPrefix: true },
@@ -124,13 +125,24 @@ function runVultc(code, target, javaPrefix, template) {
             }
 
             // Include runtime files for C/C++ targets
-            if (target === 'c' || target === 'cpp' || target === 'c-pd' || target === 'c-teensy') {
+            if (target === 'c' || target === 'cpp' || target === 'c-pd' || target === 'c-teensy' || target === 'c-juce') {
                 const runtimeDir = path.join(__dirname, 'vult-runtime');
                 if (fs.existsSync(path.join(runtimeDir, 'vultin.h'))) {
                     files['vultin.h'] = fs.readFileSync(path.join(runtimeDir, 'vultin.h'), 'utf8');
                 }
                 if (fs.existsSync(path.join(runtimeDir, 'vultin.cpp'))) {
                     files['vultin.cpp'] = fs.readFileSync(path.join(runtimeDir, 'vultin.cpp'), 'utf8');
+                }
+            }
+
+            // Include JUCE wrapper files for JUCE target
+            if (target === 'c-juce') {
+                const juceDir = path.join(__dirname, 'vult-juce');
+                if (fs.existsSync(path.join(juceDir, 'VultProcessor.h'))) {
+                    files['VultProcessor.h'] = fs.readFileSync(path.join(juceDir, 'VultProcessor.h'), 'utf8');
+                }
+                if (fs.existsSync(path.join(juceDir, 'VultProcessor.cpp'))) {
+                    files['VultProcessor.cpp'] = fs.readFileSync(path.join(juceDir, 'VultProcessor.cpp'), 'utf8');
                 }
             }
 

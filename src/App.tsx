@@ -86,6 +86,7 @@ const App: React.FC = () => {
     if (target === 'c-pd') setExportTemplate('pd');
     else if (target === 'c-teensy') setExportTemplate('teensy');
     else if (target === 'c') setExportTemplate('default');
+    else if (target === 'c-juce') setExportTemplate('none');
   };
   const [exportStatus, setExportStatus] = useState('');
 
