@@ -144,6 +144,18 @@ function runVultc(code, target, javaPrefix, template) {
                 if (fs.existsSync(path.join(juceDir, 'VultProcessor.cpp'))) {
                     files['VultProcessor.cpp'] = fs.readFileSync(path.join(juceDir, 'VultProcessor.cpp'), 'utf8');
                 }
+                if (fs.existsSync(path.join(juceDir, 'PluginProcessor.h'))) {
+                    files['PluginProcessor.h'] = fs.readFileSync(path.join(juceDir, 'PluginProcessor.h'), 'utf8');
+                }
+                if (fs.existsSync(path.join(juceDir, 'PluginProcessor.cpp'))) {
+                    files['PluginProcessor.cpp'] = fs.readFileSync(path.join(juceDir, 'PluginProcessor.cpp'), 'utf8');
+                }
+                if (fs.existsSync(path.join(juceDir, 'PluginEditor.h'))) {
+                    files['PluginEditor.h'] = fs.readFileSync(path.join(juceDir, 'PluginEditor.h'), 'utf8');
+                }
+                if (fs.existsSync(path.join(juceDir, 'PluginEditor.cpp'))) {
+                    files['PluginEditor.cpp'] = fs.readFileSync(path.join(juceDir, 'PluginEditor.cpp'), 'utf8');
+                }
                 if (fs.existsSync(path.join(juceDir, 'demo.jucer'))) {
                     files['DSPLabVult.jucer'] = fs.readFileSync(path.join(juceDir, 'demo.jucer'), 'utf8');
                 }
