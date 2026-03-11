@@ -1,5 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import Prism from 'prismjs'
+;(window as any).Prism = Prism
 import 'prismjs/themes/prism-tomorrow.css'
 import 'prismjs/components/prism-clike'
 import 'prismjs/components/prism-c'
